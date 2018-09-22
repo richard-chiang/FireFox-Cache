@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"golang.org/x/net/html"
 	"io"
 	"io/ioutil"
 	"log"
@@ -102,7 +103,15 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	resp.Body.Close()
 }
 
+func ParseForLinks(resp *Response) (UrlList []string) {
+	UrlList = []string{}
 
-func ParseForImgs(data[] byte) {
-	z := html.NewTokenizer(data)
+	cursor := html.NewTokenizer(resp.Body())
+
+	for {
+		token := cursor.Next()
+	}
+
+
+	return
 }
