@@ -1,10 +1,13 @@
 package main
 
 import (
-	"encoding/json"
+	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"unicode/utf8"
+
 	"time"
 )
 
@@ -66,9 +69,31 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Will probably be needed later
+	if resp.StatusCode != 200 {
+		return
+	}
+
+	_, ok := MemoryCache[r.RequestURI]
+	if !ok {
+		NewEntry := CacheEntry{}
+		data, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Println("Something wrong while parsing data")
+		}
+		NewEntry.Dtype = http.DetectContentType(data)
+		NewEntry.RawData = data
+		if utf8.Valid(data) {
+			fmt.Println(string(data))
+		}
+		NewEntry.CreateTime = time.Now()
+		NewEntry.LastAccess = time.Now()
+		NewEntry.UseFreq = 1
+		MemoryCache[r.RequestURI] = NewEntry
+	}
+
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
-	json.Marshal()
 
 	resp.Body.Close()
 }
