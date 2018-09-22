@@ -7,7 +7,7 @@ import (
 	"log"
 	"net/http"
 	"unicode/utf8"
-
+	"golang.org/x/net/html"
 	"time"
 )
 
@@ -100,4 +100,17 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp.Body.Close()
+}
+
+func ParseForLinks(resp *Response) (UrlList []string) {
+	UrlList = []
+
+	cursor := html.NewTokenizer(resp.Body)
+
+	for {
+		token := cursor.Next()
+	}
+
+
+	return
 }
