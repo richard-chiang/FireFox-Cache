@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"unicode/utf8"
-
 	"time"
 )
 
@@ -83,6 +82,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		}
 		NewEntry.Dtype = http.DetectContentType(data)
 		NewEntry.RawData = data
+
 		if utf8.Valid(data) {
 			fmt.Println(string(data))
 		}
@@ -93,11 +93,16 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(resp.StatusCode)
+
 	_, err = io.Copy(w, resp.Body)
 	if err != nil {
 		http.Error(w, "Internal Server Error", 500)
 		panic(err)
 	}
-
 	resp.Body.Close()
+}
+
+
+func ParseForImgs(data[] byte) {
+	z := html.NewTokenizer(data)
 }
