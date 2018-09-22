@@ -6,9 +6,10 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"unicode/utf8"
-	"golang.org/x/net/html"
 	"time"
+	"unicode/utf8"
+
+	"golang.org/x/net/html"
 )
 
 // go run web-cache.go [ip:port] [replacement_policy] [cache_size] [expiration_time]
@@ -18,10 +19,10 @@ import (
 // [expiration_time] : The time period in seconds after which an item in the cache is considered to be expired.
 
 type CacheEntry struct {
-	RawData    []byte
-	StringData string
-	Dtype      string
-	UseFreq    uint64
+	RawData    []byte // Images
+	StringData string // HTML | CSS | Javascript
+	Dtype      string // "img/png" | "img/jpg" | "text/javascript" ....
+	UseFreq    uint64 // # of access
 	CreateTime time.Time
 	LastAccess time.Time
 }
@@ -102,15 +103,29 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	resp.Body.Close()
 }
 
-func ParseForLinks(resp *Response) (UrlList []string) {
-	UrlList = []
+func ParseForLinks(resp *http.Response) (UrlList []string) {
 
 	cursor := html.NewTokenizer(resp.Body)
+	UrlList = make([]string, 5000)
 
 	for {
 		token := cursor.Next()
-	}
 
+		switch {
+		case token == html.ErrorToken:
+			return
+		case token == html.StartTagToken:
+			fetchedToken := cursor.Token()
+			isAnchor := fetchedToken.Data == "a"
+			if isAnchor {
+				for _, a := range fetchedToken.Attr {
+					if a.Key == "href" {
+						UrlList = append(UrlList, a.Val)
+					}
+				}
+			}
+		}
+	}
 
 	return
 }
