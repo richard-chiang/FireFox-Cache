@@ -3,11 +3,9 @@ package main
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"time"
-	"unicode/utf8"
 
 	"golang.org/x/net/html"
 )
@@ -62,7 +60,10 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp, err = client.Do(newRequest)
-
+	// fmt.Println("===========================================")
+	// fmt.Println("resp")
+	// fmt.Println(resp.Body)
+	// fmt.Println("===========================================")
 	r.Body.Close()
 
 	if err != nil {
@@ -74,24 +75,26 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	if resp.StatusCode != 200 {
 		return
 	}
+	// if http.DetectContentType(data) == "text/html" {
 
-	_, ok := MemoryCache[r.RequestURI]
-	if !ok {
-		NewEntry := CacheEntry{}
-		data, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			fmt.Println("Something wrong while parsing data")
-		}
-		NewEntry.Dtype = http.DetectContentType(data)
-		NewEntry.RawData = data
-		if utf8.Valid(data) {
-			fmt.Println(string(data))
-		}
-		NewEntry.CreateTime = time.Now()
-		NewEntry.LastAccess = time.Now()
-		NewEntry.UseFreq = 1
-		MemoryCache[r.RequestURI] = NewEntry
-	}
+	// }
+	ParseHTML(resp)
+
+	// _, ok := MemoryCache[r.RequestURI]
+	// if !ok {
+	// 	NewEntry := CacheEntry{}
+	// 	data, err := ioutil.ReadAll(resp.Body)
+	// 	if err != nil {
+	// 		fmt.Println("Something wrong while parsing data")
+	// 	}
+
+	// 	NewEntry.Dtype = http.DetectContentType(data)
+	// 	NewEntry.RawData = data
+	// 	NewEntry.CreateTime = time.Now()
+	// 	NewEntry.LastAccess = time.Now()
+	// 	NewEntry.UseFreq = 1
+	// 	MemoryCache[r.RequestURI] = NewEntry
+	// }
 
 	w.WriteHeader(resp.StatusCode)
 	_, err = io.Copy(w, resp.Body)
@@ -103,10 +106,9 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	resp.Body.Close()
 }
 
-func ParseForLinks(resp *http.Response) (UrlList []string) {
+func ParseHTML(resp *http.Response) {
 
 	cursor := html.NewTokenizer(resp.Body)
-	UrlList = make([]string, 5000)
 
 	for {
 		token := cursor.Next()
@@ -116,11 +118,12 @@ func ParseForLinks(resp *http.Response) (UrlList []string) {
 			return
 		case token == html.StartTagToken:
 			fetchedToken := cursor.Token()
+			fmt.Println("token " + fetchedToken.String())
 			isAnchor := fetchedToken.Data == "a"
 			if isAnchor {
 				for _, a := range fetchedToken.Attr {
 					if a.Key == "href" {
-						UrlList = append(UrlList, a.Val)
+						fmt.Println("a href: " + a.Val)
 					}
 				}
 			}
