@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"log"
 	"net/http"
@@ -13,13 +14,24 @@ import (
 // [cache_size] : The capacity of the cache in MB (your cache cannot use more than this amount of capacity). Note that this specifies the (same) capacity for both the memory cache and the disk cache.
 // [expiration_time] : The time period in seconds after which an item in the cache is considered to be expired.
 
+type CacheEntry struct {
+	RawData []byte
+	StringData string
+	Dtype string
+	UseFreq uint64
+	CreateTime time.Time
+	LastAccess time.Time
+}
+
+var MemoryCache map[string]CacheEntry
+
 func main() {
 	// IpPort := os.Args[1] // send and receive data from Firefox
 	// ReplacementPolicy := os.Args[2]
 	// CacheSize := os.Args[3]
 	// ExpirationTime := os.Args[4]
 
-	IpPort := "localhost:8888"
+	IpPort := "localhost:1243"
 
 	s := &http.Server{
 		Addr: IpPort,
@@ -29,7 +41,7 @@ func main() {
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
-
+	MemoryCache = map[string]CacheEntry{}
 	log.Fatal(s.ListenAndServe())
 }
 
@@ -56,6 +68,8 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
+	json.Marshal()
 
 	resp.Body.Close()
 }
+
