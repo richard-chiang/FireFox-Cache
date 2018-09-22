@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"io"
 	"log"
 	"net/http"
@@ -15,10 +14,10 @@ import (
 // [expiration_time] : The time period in seconds after which an item in the cache is considered to be expired.
 
 type CacheEntry struct {
-	RawData []byte
+	RawData    []byte
 	StringData string
-	Dtype string
-	UseFreq uint64
+	Dtype      string
+	UseFreq    uint64
 	CreateTime time.Time
 	LastAccess time.Time
 }
@@ -31,7 +30,7 @@ func main() {
 	// CacheSize := os.Args[3]
 	// ExpirationTime := os.Args[4]
 
-	IpPort := "localhost:1243"
+	IpPort := "localhost:8888"
 
 	s := &http.Server{
 		Addr: IpPort,
@@ -50,11 +49,11 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	var newRequest *http.Request
 	client := &http.Client{}
 
-	log.Printf("%v %v", r.Method, r.RequestURI)
-
 	newRequest, err := http.NewRequest(r.Method, r.RequestURI, r.Body)
-	for name, value := range r.Header {
-		newRequest.Header.Set(name, value[0])
+	for name, values := range r.Header {
+		for _, v := range values {
+			w.Header().Add(name, v)
+		}
 	}
 
 	resp, err = client.Do(newRequest)
@@ -67,9 +66,11 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
-	json.Marshal()
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		http.Error(w, "Internal Server Error", 500)
+		panic(err)
+	}
 
 	resp.Body.Close()
 }
-
