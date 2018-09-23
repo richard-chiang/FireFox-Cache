@@ -17,8 +17,7 @@ import (
 // [expiration_time] : The time period in seconds after which an item in the cache is considered to be expired.
 
 type CacheEntry struct {
-	RawData    []byte // Images
-	StringData string // HTML | CSS | Javascript
+	RawData    []byte
 	Dtype      string // "img/png" | "img/jpg" | "text/javascript" ....
 	UseFreq    uint64 // # of access
 	CreateTime time.Time
@@ -60,10 +59,6 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp, err = client.Do(newRequest)
-	// fmt.Println("===========================================")
-	// fmt.Println("resp")
-	// fmt.Println(resp.Body)
-	// fmt.Println("===========================================")
 	r.Body.Close()
 
 	if err != nil {
@@ -96,7 +91,6 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	// 	NewEntry.UseFreq = 1
 	// 	MemoryCache[r.RequestURI] = NewEntry
 	// }
-
 	w.WriteHeader(resp.StatusCode)
 
 	_, err = io.Copy(w, resp.Body)
@@ -108,27 +102,92 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 }
 
 func ParseHTML(resp *http.Response) {
+	const LINK_TAG = "link"
+	const IMG_TAG = "img"
+	const SCRIPT_TAG = "script"
 
 	cursor := html.NewTokenizer(resp.Body)
 
 	for {
 		token := cursor.Next()
 
-		switch {
-		case token == html.ErrorToken:
+		switch token {
+		case html.ErrorToken:
 			return
-		case token == html.StartTagToken:
+		case html.StartTagToken:
 			fetchedToken := cursor.Token()
-			fmt.Println("token " + fetchedToken.String())
-			isAnchor := fetchedToken.Data == "a"
-			if isAnchor {
+			switch fetchedToken.Data {
+			case LINK_TAG:
 				for _, a := range fetchedToken.Attr {
 					if a.Key == "href" {
-						fmt.Println("a href: " + a.Val)
+						entry := NewCacheEntry(*resp)
+						resp, err := http.Get(a.Val)
+						CheckError(err)
+						bytes, err := ioutil.ReadAll(resp.Body)
+						CheckError(err)
+						entry.RawData = bytes
+						MemoryCache[a.Val] = entry
+					}
+				}
+			case IMG_TAG:
+				for _, a := range fetchedToken.Attr {
+					if a.Key == "src" {
+						entry := NewCacheEntry(*resp)
+						resp, err := http.Get(a.Val)
+						CheckError(err)
+						bytes, err := ioutil.ReadAll(resp.Body)
+						CheckError(err)
+						entry.RawData = bytes
+						MemoryCache[a.Val] = entry
+					}
+				}
+			case SCRIPT_TAG:
+				for _, a := range fetchedToken.Attr {
+					if a.Key == "src" {
+						entry := NewCacheEntry(*resp)
+						resp, err := http.Get(a.Val)
+						CheckError(err)
+						bytes, err := ioutil.ReadAll(resp.Body)
+						CheckError(err)
+						entry.RawData = bytes
+						MemoryCache[a.Val] = entry
 					}
 				}
 			}
 		}
 	}
 	return
+}
+
+// ===========================================================
+// ===========================================================
+//					Helper for Cache Entry
+// ===========================================================
+// ===========================================================
+
+// Fill in RawData
+func NewCacheEntry(resp http.Response) CacheEntry {
+	NewEntry := CacheEntry{}
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Something wrong while parsing data")
+	}
+
+	NewEntry.Dtype = http.DetectContentType(data)
+	NewEntry.CreateTime = time.Now()
+	NewEntry.LastAccess = time.Now()
+	NewEntry.UseFreq = 1
+	return NewEntry
+}
+
+// ===========================================================
+// ===========================================================
+//					Helper
+// ===========================================================
+// ===========================================================
+
+func CheckError(err error) {
+	if err != nil {
+		log.Fatal(err)
+	}
 }
