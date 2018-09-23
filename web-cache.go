@@ -46,6 +46,7 @@ func main() {
 		WriteTimeout: 30 * time.Second,
 	}
 	MemoryCache = map[string]CacheEntry{}
+	CacheMutex = &sync.Mutex{}
 	log.Fatal(s.ListenAndServe())
 }
 
@@ -85,7 +86,6 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(strings.Contains(http.DetectContentType(data), "text/html"))
 
 		if strings.Contains(http.DetectContentType(data), "text/html") {
-			fmt.Println("CONTAINS!!!!\n\n\n")
 			newEntry := NewCacheEntry(*resp)
 			AddCacheEntry(r.RequestURI, newEntry)
 			ParseHTML(resp)

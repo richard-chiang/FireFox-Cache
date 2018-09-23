@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="6b495c7f-9aa4-4559-94ce-2894e08a9a3f" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/web-cache.go" beforeDir="false" afterPath="$PROJECT_DIR$/web-cache.go" afterDir="false" />
-    </list>
+    <list default="true" id="6b495c7f-9aa4-4559-94ce-2894e08a9a3f" name="Default Changelist" comment="" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -33,13 +31,13 @@
       </usages-collector>
       <usages-collector id="statistics.file.extensions.edit">
         <counts>
-          <entry key="go" value="1226" />
+          <entry key="go" value="1239" />
           <entry key="txt" value="22" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.types.edit">
         <counts>
-          <entry key="Go" value="1226" />
+          <entry key="Go" value="1239" />
           <entry key="PLAIN_TEXT" value="22" />
         </counts>
       </usages-collector>
@@ -57,8 +55,8 @@
           <file pinned="false" current-in-tab="true">
             <entry file="file://$PROJECT_DIR$/web-cache.go">
               <provider selected="true" editor-type-id="text-editor">
-                <state relative-caret-position="162">
-                  <caret line="79" column="12" selection-start-line="79" selection-start-column="12" selection-end-line="79" selection-end-column="12" />
+                <state relative-caret-position="144">
+                  <caret line="75" selection-start-line="75" selection-end-line="75" />
                   <folding>
                     <element signature="e#14#131#0" expanded="true" />
                   </folding>
@@ -83,7 +81,7 @@
             <entry file="file://$PROJECT_DIR$/web-cache.go">
               <provider selected="true" editor-type-id="text-editor">
                 <state relative-caret-position="378">
-                  <caret line="188" lean-forward="true" selection-start-line="188" selection-end-line="188" />
+                  <caret line="187" lean-forward="true" selection-start-line="187" selection-end-line="187" />
                 </state>
               </provider>
             </entry>
@@ -184,7 +182,6 @@
   </component>
   <component name="ToolWindowManager">
     <frame x="67" y="25" width="1853" height="1055" extended-state="6" />
-    <editor active="true" />
     <layout>
       <window_info content_ui="combo" id="Project" order="0" visible="true" weight="0.1128943" />
       <window_info id="Structure" order="1" side_tool="true" weight="0.25" />
@@ -222,8 +219,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/web-cache.go">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="162">
-          <caret line="79" column="12" selection-start-line="79" selection-start-column="12" selection-end-line="79" selection-end-column="12" />
+        <state relative-caret-position="144">
+          <caret line="75" selection-start-line="75" selection-end-line="75" />
           <folding>
             <element signature="e#14#131#0" expanded="true" />
           </folding>
