@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -57,11 +56,6 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	client := &http.Client{}
 
 	newRequest, err := http.NewRequest(r.Method, r.RequestURI, r.Body)
-	for name, values := range r.Header {
-		for _, v := range values {
-			w.Header().Add(name, v)
-		}
-	}
 
 	resp, err = client.Do(newRequest)
 	defer r.Body.Close()
@@ -72,30 +66,36 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Will probably be needed later
-	if resp.StatusCode != 200 {
-		return
-	}
-	_, ok := MemoryCache[r.RequestURI]
-	if !ok {
-		//NewEntry := CacheEntry{}
-		data, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			fmt.Println("Something wrong while parsing data")
-		}
+	// // Will probably be needed later
+	// if resp.StatusCode != 200 {
+	// 	return
+	// }
+	// _, ok := MemoryCache[r.RequestURI]
+	// if !ok {
+	// 	//NewEntry := CacheEntry{}
+	// 	data, err := ioutil.ReadAll(resp.Body)
+	// 	if err != nil {
+	// 		fmt.Println("Something wrong while parsing data")
+	// 	}
 
-		if strings.Contains(http.DetectContentType(data), "text/html") {
-			newEntry := NewCacheEntry(*resp)
-			AddCacheEntry(r.RequestURI, newEntry)
-			ParseHTML(resp)
+	// 	if strings.Contains(http.DetectContentType(data), "text/html") {
+	// 		newEntry := NewCacheEntry(*resp)
+	// 		AddCacheEntry(r.RequestURI, newEntry)
+	// 		ParseHTML(resp)
+	// 	}
+	// }
+
+	for name, values := range resp.Header {
+		for _, v := range values {
+			w.Header().Add(name, v)
 		}
 	}
 
 	w.WriteHeader(resp.StatusCode)
 	_, err = io.Copy(w, resp.Body)
-	fmt.Println("============ forward from cache ===============")
 	if err != nil {
 		http.Error(w, "Internal Server Error", 500)
+		DebugPrint("io.Copy error", "Issue with")
 		panic(err)
 	}
 
@@ -191,4 +191,10 @@ func CheckError(err error) {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func DebugPrint(title string, msg string) {
+	fmt.Println("============ " + title + " ===============")
+	fmt.Println(msg)
+	fmt.Println("---------------------------------------")
 }
