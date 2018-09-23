@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"golang.org/x/net/html"
 	"io"
 	"io/ioutil"
 	"log"
@@ -10,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/net/html"
 )
 
 // go run web-cache.go [ip:port] [replacement_policy] [cache_size] [expiration_time]
@@ -63,7 +64,8 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp, err = client.Do(newRequest)
-	r.Body.Close()
+	defer r.Body.Close()
+	defer resp.Body.Close()
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -74,7 +76,6 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	if resp.StatusCode != 200 {
 		return
 	}
-	fmt.Println("size of memory cache ", len(MemoryCache))
 	_, ok := MemoryCache[r.RequestURI]
 	if !ok {
 		//NewEntry := CacheEntry{}
@@ -82,8 +83,6 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			fmt.Println("Something wrong while parsing data")
 		}
-		fmt.Println(http.DetectContentType(data))
-		fmt.Println(strings.Contains(http.DetectContentType(data), "text/html"))
 
 		if strings.Contains(http.DetectContentType(data), "text/html") {
 			newEntry := NewCacheEntry(*resp)
@@ -92,21 +91,14 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 	NewEntry.Dtype = http.DetectContentType(data)
-	// 	NewEntry.RawData = data
-	// 	NewEntry.CreateTime = time.Now()
-	// 	NewEntry.LastAccess = time.Now()
-	// 	NewEntry.UseFreq = 1
-	// 	MemoryCache[r.RequestURI] = NewEntry
-	// }
 	w.WriteHeader(resp.StatusCode)
-
 	_, err = io.Copy(w, resp.Body)
+	fmt.Println("============ forward from cache ===============")
 	if err != nil {
 		http.Error(w, "Internal Server Error", 500)
 		panic(err)
 	}
-	resp.Body.Close()
+
 }
 
 func ParseHTML(resp *http.Response) {
@@ -146,7 +138,6 @@ func ParseHTML(resp *http.Response) {
 			}
 		}
 	}
-	return
 }
 
 // ===========================================================
@@ -185,10 +176,8 @@ func NewCacheEntry(resp http.Response) CacheEntry {
 
 // Atomic adding to the cache
 func AddCacheEntry(URL string, entry CacheEntry) {
-
 	CacheMutex.Lock()
 	MemoryCache[URL] = entry
-	fmt.Println(string(entry.RawData))
 	CacheMutex.Unlock()
 }
 
