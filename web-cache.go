@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -24,6 +25,7 @@ type CacheEntry struct {
 	LastAccess time.Time
 }
 
+var CacheMutex *sync.Mutex
 var MemoryCache map[string]CacheEntry
 
 func main() {
@@ -157,7 +159,7 @@ func RequestResource(a html.Attribute) {
 	CheckError(err)
 
 	entry.RawData = bytes
-	MemoryCache[a.Val] = entry
+	AddCacheEntry(a.Val, entry)
 }
 
 // Fill in RawData
@@ -174,6 +176,15 @@ func NewCacheEntry(resp http.Response) CacheEntry {
 	NewEntry.UseFreq = 1
 	return NewEntry
 }
+
+// Atomic adding to the cache
+func AddCacheEntry(URL string, entry CacheEntry) {
+
+	CacheMutex.Lock()
+	MemoryCache[URL] = entry
+	CacheMutex.Unlock()
+}
+
 // ===========================================================
 // ===========================================================
 //					Helper
