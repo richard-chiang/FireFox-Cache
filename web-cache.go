@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"unicode/utf8"
 	"time"
 )
 
@@ -18,10 +17,10 @@ import (
 // [expiration_time] : The time period in seconds after which an item in the cache is considered to be expired.
 
 type CacheEntry struct {
-	RawData    []byte
-	StringData string
-	Dtype      string
-	UseFreq    uint64
+	RawData    []byte // Images
+	StringData string // HTML | CSS | Javascript
+	Dtype      string // "img/png" | "img/jpg" | "text/javascript" ....
+	UseFreq    uint64 // # of access
 	CreateTime time.Time
 	LastAccess time.Time
 }
@@ -61,7 +60,10 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp, err = client.Do(newRequest)
-
+	// fmt.Println("===========================================")
+	// fmt.Println("resp")
+	// fmt.Println(resp.Body)
+	// fmt.Println("===========================================")
 	r.Body.Close()
 
 	if err != nil {
@@ -73,25 +75,27 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	if resp.StatusCode != 200 {
 		return
 	}
-
 	_, ok := MemoryCache[r.RequestURI]
+
 	if !ok {
-		NewEntry := CacheEntry{}
+		//NewEntry := CacheEntry{}
 		data, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			fmt.Println("Something wrong while parsing data")
-		}
-		NewEntry.Dtype = http.DetectContentType(data)
-		NewEntry.RawData = data
+			if http.DetectContentType(data) == "text/html" {
+				ParseHTML(resp)
+			}
+			ParseHTML(resp)
+		 }
+	 }
 
-		if utf8.Valid(data) {
-			fmt.Println(string(data))
-		}
-		NewEntry.CreateTime = time.Now()
-		NewEntry.LastAccess = time.Now()
-		NewEntry.UseFreq = 1
-		MemoryCache[r.RequestURI] = NewEntry
-	}
+	// 	NewEntry.Dtype = http.DetectContentType(data)
+	// 	NewEntry.RawData = data
+	// 	NewEntry.CreateTime = time.Now()
+	// 	NewEntry.LastAccess = time.Now()
+	// 	NewEntry.UseFreq = 1
+	// 	MemoryCache[r.RequestURI] = NewEntry
+	// }
 
 	w.WriteHeader(resp.StatusCode)
 
@@ -103,15 +107,28 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	resp.Body.Close()
 }
 
-func ParseForLinks(resp *Response) (UrlList []string) {
-	UrlList = []string{}
+func ParseHTML(resp *http.Response) {
 
-	cursor := html.NewTokenizer(resp.Body())
+	cursor := html.NewTokenizer(resp.Body)
 
 	for {
 		token := cursor.Next()
+
+		switch {
+		case token == html.ErrorToken:
+			return
+		case token == html.StartTagToken:
+			fetchedToken := cursor.Token()
+			fmt.Println("token " + fetchedToken.String())
+			isAnchor := fetchedToken.Data == "a"
+			if isAnchor {
+				for _, a := range fetchedToken.Attr {
+					if a.Key == "href" {
+						fmt.Println("a href: " + a.Val)
+					}
+				}
+			}
+		}
 	}
-
-
 	return
 }
