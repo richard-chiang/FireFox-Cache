@@ -72,6 +72,9 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	if resp.StatusCode != 200 {
 		return
 	}
+	fmt.Println(resp.Body)
+	data, _ := ioutil.ReadAll(resp.Body)
+	fmt.Println(string(data))
 	_, ok := MemoryCache[r.RequestURI]
 
 	if !ok {
@@ -79,14 +82,14 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		data, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			fmt.Println("Something wrong while parsing data")
-			if http.DetectContentType(data) == "text/html" {
-				newEntry := NewCacheEntry(*resp)
-				AddCacheEntry(r.RequestURI, newEntry)
-				ParseHTML(resp)
-			}
+		}
+		if http.DetectContentType(data) == "text/html" {
+			newEntry := NewCacheEntry(*resp)
+			AddCacheEntry(r.RequestURI, newEntry)
 			ParseHTML(resp)
-		 }
-	 }
+		}
+		ParseHTML(resp)
+	}
 
 	// 	NewEntry.Dtype = http.DetectContentType(data)
 	// 	NewEntry.RawData = data
