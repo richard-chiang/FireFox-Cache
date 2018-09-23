@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -72,23 +73,23 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	if resp.StatusCode != 200 {
 		return
 	}
-	fmt.Println(resp.Body)
-	data, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println(string(data))
+	fmt.Println("size of memory cache ", len(MemoryCache))
 	_, ok := MemoryCache[r.RequestURI]
-
 	if !ok {
 		//NewEntry := CacheEntry{}
 		data, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			fmt.Println("Something wrong while parsing data")
 		}
-		if http.DetectContentType(data) == "text/html" {
+		fmt.Println(http.DetectContentType(data))
+		fmt.Println(strings.Contains(http.DetectContentType(data), "text/html"))
+
+		if strings.Contains(http.DetectContentType(data), "text/html") {
+			fmt.Println("CONTAINS!!!!\n\n\n")
 			newEntry := NewCacheEntry(*resp)
 			AddCacheEntry(r.RequestURI, newEntry)
 			ParseHTML(resp)
 		}
-		ParseHTML(resp)
 	}
 
 	// 	NewEntry.Dtype = http.DetectContentType(data)
