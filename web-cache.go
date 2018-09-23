@@ -34,7 +34,7 @@ func main() {
 	// CacheSize := os.Args[3]
 	// ExpirationTime := os.Args[4]
 
-	IpPort := "localhost:8888"
+	IpPort := "localhost:1243"
 
 	s := &http.Server{
 		Addr: IpPort,
@@ -80,6 +80,8 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			fmt.Println("Something wrong while parsing data")
 			if http.DetectContentType(data) == "text/html" {
+				newEntry := NewCacheEntry(*resp)
+				AddCacheEntry(r.RequestURI, newEntry)
 				ParseHTML(resp)
 			}
 			ParseHTML(resp)
@@ -182,6 +184,7 @@ func AddCacheEntry(URL string, entry CacheEntry) {
 
 	CacheMutex.Lock()
 	MemoryCache[URL] = entry
+	fmt.Println(string(entry.RawData))
 	CacheMutex.Unlock()
 }
 
