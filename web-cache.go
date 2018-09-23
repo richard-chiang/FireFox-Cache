@@ -120,37 +120,19 @@ func ParseHTML(resp *http.Response) {
 			case LINK_TAG:
 				for _, a := range fetchedToken.Attr {
 					if a.Key == "href" {
-						entry := NewCacheEntry(*resp)
-						resp, err := http.Get(a.Val)
-						CheckError(err)
-						bytes, err := ioutil.ReadAll(resp.Body)
-						CheckError(err)
-						entry.RawData = bytes
-						MemoryCache[a.Val] = entry
+						RequestResource(a)
 					}
 				}
 			case IMG_TAG:
 				for _, a := range fetchedToken.Attr {
 					if a.Key == "src" {
-						entry := NewCacheEntry(*resp)
-						resp, err := http.Get(a.Val)
-						CheckError(err)
-						bytes, err := ioutil.ReadAll(resp.Body)
-						CheckError(err)
-						entry.RawData = bytes
-						MemoryCache[a.Val] = entry
+						RequestResource(a)
 					}
 				}
 			case SCRIPT_TAG:
 				for _, a := range fetchedToken.Attr {
 					if a.Key == "src" {
-						entry := NewCacheEntry(*resp)
-						resp, err := http.Get(a.Val)
-						CheckError(err)
-						bytes, err := ioutil.ReadAll(resp.Body)
-						CheckError(err)
-						entry.RawData = bytes
-						MemoryCache[a.Val] = entry
+						RequestResource(a)
 					}
 				}
 			}
@@ -164,6 +146,19 @@ func ParseHTML(resp *http.Response) {
 //					Helper for Cache Entry
 // ===========================================================
 // ===========================================================
+
+// Fetch the img/link/script from the url provided in an html
+func RequestResource(a html.Attribute) {
+	resp, err := http.Get(a.Val)
+	entry := NewCacheEntry(*resp)
+	CheckError(err)
+
+	bytes, err := ioutil.ReadAll(resp.Body)
+	CheckError(err)
+
+	entry.RawData = bytes
+	MemoryCache[a.Val] = entry
+}
 
 // Fill in RawData
 func NewCacheEntry(resp http.Response) CacheEntry {
@@ -179,7 +174,6 @@ func NewCacheEntry(resp http.Response) CacheEntry {
 	NewEntry.UseFreq = 1
 	return NewEntry
 }
-
 // ===========================================================
 // ===========================================================
 //					Helper
