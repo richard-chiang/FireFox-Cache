@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -57,6 +58,7 @@ func main() {
 	}
 	MemoryCache = map[string]CacheEntry{}
 	CacheMutex = &sync.Mutex{}
+	RestoreCache()
 	log.Fatal(s.ListenAndServe())
 }
 
@@ -238,7 +240,15 @@ func WriteToDisk(fileHash string, entry CacheEntry) {
 }
 
 func RestoreCache() {
+	CacheMutex.Lock()
+	defer CacheMutex.Unlock()
 
+	files, err := filepath.Glob(CacheFolderPath + "*")
+	CheckError("err restoring cache. Cannot fetch file names", err)
+
+	for _, fileName := range files {
+		MemoryCache[fileName] = ReadFromDisk(fileName)
+	}
 }
 
 func Encrypt(input string) string {
