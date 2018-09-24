@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -69,7 +72,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			// If response code is not 200, forward response to firefox.
+			// TODO: If response code is not 200, forward response to firefox.
 
 			// Create New Cache Entry
 			data, err := ioutil.ReadAll(resp.Body)
@@ -199,7 +202,31 @@ func NewCacheEntry(data []byte) CacheEntry {
 func AddCacheEntry(URL string, entry CacheEntry) {
 	CacheMutex.Lock()
 	MemoryCache[URL] = entry
+	WriteToDisk(URL, entry)
 	CacheMutex.Unlock()
+}
+
+func WriteToDisk(URL string, entry CacheEntry) {
+	bytes, err := json.Marshal(entry)
+	CheckError("json marshal error", err)
+
+	file, err := os.Create(URL)
+	CheckError("Create File Error", err)
+
+	writer := bufio.NewWriter(file)
+	writer.Write(bytes)
+	writer.Flush()
+	file.Close()
+}
+
+func ReadFromDisk(URL string) CacheEntry {
+	data, err := ioutil.ReadFile(URL)
+	CheckError("read error from disk", err)
+
+	var cacheEntry CacheEntry
+	err = json.Unmarshal(data, &cacheEntry)
+	CheckError("json unmarshal err", err)
+	return cacheEntry
 }
 
 // ===========================================================
