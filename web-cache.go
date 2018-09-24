@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,30 +67,32 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// // Will probably be needed later
-	// if resp.StatusCode != 200 {
-	// 	return
-	// }
-	// _, ok := MemoryCache[r.RequestURI]
-	// if !ok {
-	// 	//NewEntry := CacheEntry{}
-	// 	data, err := ioutil.ReadAll(resp.Body)
-	// 	if err != nil {
-	// 		fmt.Println("Something wrong while parsing data")
-	// 	}
+	 // Will probably be needed later
+	 //if resp.StatusCode != 200 {
+	 //	return
+	 //}
 
-	// 	if strings.Contains(http.DetectContentType(data), "text/html") {
-	// 		newEntry := NewCacheEntry(*resp)
-	// 		AddCacheEntry(r.RequestURI, newEntry)
-	// 		ParseHTML(resp)
-	// 	}
-	// }
+	 _, ok := MemoryCache[r.RequestURI]
+	 if !ok {
+	 	//NewEntry := CacheEntry{}
+	 	data, err := ioutil.ReadAll(resp.Body)
+	 	if err != nil {
+	 		fmt.Println("Something wrong while parsing data")
+	 	}
 
+	 	if strings.Contains(http.DetectContentType(data), "text/html") {
+	 		newEntry := NewCacheEntry(*resp)
+	 		AddCacheEntry(r.RequestURI, newEntry)
+	 		ParseHTML(resp)
+	 	}
+	 }
+	DebugPrint("Cache adding", "ADDED TO CACHE")
 	for name, values := range resp.Header {
 		for _, v := range values {
 			w.Header().Add(name, v)
 		}
 	}
+	DebugPrint("WRITING HEADER", " CACHE")
 
 	w.WriteHeader(resp.StatusCode)
 	_, err = io.Copy(w, resp.Body)
