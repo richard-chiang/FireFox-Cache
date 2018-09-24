@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -180,6 +181,18 @@ func ParseHTML(resp *http.Response) {
 // ===========================================================
 // ===========================================================
 
+func GetByHash(hashkey string) (CacheEntry, bool) {
+	CacheMutex.Lock()
+	entry, exist := MemoryCache[hashkey]
+	CacheMutex.Unlock()
+	return entry, exist
+}
+
+func GetByURL(url string) (CacheEntry, bool) {
+	hashkey := Encrypt(url)
+	return GetByHash(hashkey)
+}
+
 // Fetch the img/link/script from the url provided in an html
 func RequestResource(a html.Attribute) {
 	resp, err := http.Get(a.Val)
@@ -205,28 +218,17 @@ func NewCacheEntry(data []byte) CacheEntry {
 func AddCacheEntry(URL string, entry CacheEntry) {
 	CacheMutex.Lock()
 	MemoryCache[URL] = entry
-	key := Encrypt(URL)
-	WriteToDisk(key, entry)
+	fileName := Encrypt(URL)
+	DebugPrint("File Name", "URL: "+URL+"\n"+"Hash Key: "+fileName)
+	WriteToDisk(fileName, entry)
 	CacheMutex.Unlock()
 }
 
-func GetByHash(hashkey string) (CacheEntry, bool) {
-	CacheMutex.Lock()
-	entry, exist := MemoryCache[hashkey]
-	CacheMutex.Unlock()
-	return entry, exist
-}
-
-func GetByURL(url string) (CacheEntry, bool) {
-	hashkey := Encrypt(url)
-	return GetByHash(hashkey)
-}
-
-func WriteToDisk(URL string, entry CacheEntry) {
+func WriteToDisk(fileHash string, entry CacheEntry) {
 	bytes, err := json.Marshal(entry)
 	CheckError("json marshal error", err)
 
-	file, err := os.Create(CacheFolderPath + URL)
+	file, err := os.Create(CacheFolderPath + fileHash)
 	CheckError("Create File Error", err)
 
 	writer := bufio.NewWriter(file)
@@ -242,7 +244,8 @@ func RestoreCache() {
 func Encrypt(input string) string {
 	var bytes []byte = []byte(input)
 	var code [32]byte = sha256.Sum256(bytes)
-	return string(code[:])
+	var s string = string(code[:])
+	return strconv.QuoteToASCII(s)
 }
 
 func ReadFromDisk(URL string) CacheEntry {
