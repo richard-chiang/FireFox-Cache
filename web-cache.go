@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -35,6 +36,8 @@ type CacheEntry struct {
 var CacheMutex *sync.Mutex
 var MemoryCache map[string]CacheEntry
 
+const CacheFolderPath string = "./cache/"
+
 func main() {
 	// IpPort := os.Args[1] // send and receive data from Firefox
 	// ReplacementPolicy := os.Args[2]
@@ -61,7 +64,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == "GET" {
 		// Cache <- Response
-		entry, existInCache := MemoryCache[r.RequestURI]
+		entry, existInCache := GetByURL(r.RequestURI)
 
 		if !existInCache {
 			// call request to get data for caching
@@ -202,21 +205,44 @@ func NewCacheEntry(data []byte) CacheEntry {
 func AddCacheEntry(URL string, entry CacheEntry) {
 	CacheMutex.Lock()
 	MemoryCache[URL] = entry
-	WriteToDisk(URL, entry)
+	key := Encrypt(URL)
+	WriteToDisk(key, entry)
 	CacheMutex.Unlock()
+}
+
+func GetByHash(hashkey string) (CacheEntry, bool) {
+	CacheMutex.Lock()
+	entry, exist := MemoryCache[hashkey]
+	CacheMutex.Unlock()
+	return entry, exist
+}
+
+func GetByURL(url string) (CacheEntry, bool) {
+	hashkey := Encrypt(url)
+	return GetByHash(hashkey)
 }
 
 func WriteToDisk(URL string, entry CacheEntry) {
 	bytes, err := json.Marshal(entry)
 	CheckError("json marshal error", err)
 
-	file, err := os.Create(URL)
+	file, err := os.Create(CacheFolderPath + URL)
 	CheckError("Create File Error", err)
 
 	writer := bufio.NewWriter(file)
 	writer.Write(bytes)
 	writer.Flush()
 	file.Close()
+}
+
+func RestoreCache() {
+
+}
+
+func Encrypt(input string) string {
+	var bytes []byte = []byte(input)
+	var code [32]byte = sha256.Sum256(bytes)
+	return string(code[:])
 }
 
 func ReadFromDisk(URL string) CacheEntry {
