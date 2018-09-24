@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -57,7 +58,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == "GET" {
 		// Cache <- Response
-		_, existInCache := MemoryCache[r.RequestURI]
+		entry, existInCache := MemoryCache[r.RequestURI]
 
 		if !existInCache {
 			// call request to get data for caching
@@ -76,7 +77,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			if strings.Contains(http.DetectContentType(data), "text/html") {
 				newEntry := NewCacheEntry(data)
 				newEntry.RawData = data
-
+				newEntry.Header = http.Header{}
 				for name, values := range resp.Header {
 					for _, v := range values {
 						newEntry.Header.Add(name, v)
@@ -87,7 +88,10 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				ParseHTML(resp)
 			}
 		}
-		// TODO: Send from cache
+
+		w.WriteHeader(200)
+		_, err := io.Copy(w, bytes.NewReader(entry.RawData))
+		CheckError(err)
 
 	} else { // forward response to firefox
 		resp := NewRequest(w, r)
