@@ -83,12 +83,18 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 						newEntry.Header.Add(name, v)
 					}
 				}
-
 				AddCacheEntry(r.RequestURI, newEntry)
+				entry = newEntry
 				ParseHTML(resp)
 			}
 		}
 
+		for name, values := range entry.Header {
+			for _, v := range values {
+				w.Header().Add(name, v)
+			}
+		}
+		fmt.Println(entry.RawData)
 		w.WriteHeader(200)
 		_, err := io.Copy(w, bytes.NewReader(entry.RawData))
 		CheckError(err)
