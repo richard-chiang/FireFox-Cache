@@ -23,6 +23,7 @@ type CacheEntry struct {
 	RawData    []byte
 	Dtype      string // "img/png" | "img/jpg" | "text/javascript" ....
 	UseFreq    uint64 // # of access
+	Header     http.Header
 	CreateTime time.Time
 	LastAccess time.Time
 }
@@ -52,54 +53,59 @@ func main() {
 }
 
 func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
-	var resp *http.Response
-	var newRequest *http.Request
-	client := &http.Client{}
-
-	newRequest, err := http.NewRequest(r.Method, r.RequestURI, r.Body)
-
-	resp, err = client.Do(newRequest)
 	defer r.Body.Close()
-	defer resp.Body.Close()
 
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	if r.Method == "GET" {
+		// Cache <- Response
+		_, existInCache := MemoryCache[r.RequestURI]
 
-	 // Will probably be needed later
-	 //if resp.StatusCode != 200 {
-	 //	return
-	 //}
+		if !existInCache {
+			// call request to get data for caching
+			// TODO: any error return http response with error code (parsing/ forwarding request)
+			resp := NewRequest(w, r)
+			defer resp.Body.Close()
 
-	 _, ok := MemoryCache[r.RequestURI]
-	 if !ok {
-	 	//NewEntry := CacheEntry{}
-	 	data, err := ioutil.ReadAll(resp.Body)
-	 	if err != nil {
-	 		fmt.Println("Something wrong while parsing data")
-	 	}
+			// If response code is not 200, forward response to firefox.
 
-	 	if strings.Contains(http.DetectContentType(data), "text/html") {
-	 		newEntry := NewCacheEntry(*resp)
-	 		AddCacheEntry(r.RequestURI, newEntry)
-	 		ParseHTML(resp)
-	 	}
-	 }
-	DebugPrint("Cache adding", "ADDED TO CACHE")
-	for name, values := range resp.Header {
-		for _, v := range values {
-			w.Header().Add(name, v)
+			// Create New Cache Entry
+			data, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				fmt.Println("Something wrong while parsing data")
+			}
+
+			if strings.Contains(http.DetectContentType(data), "text/html") {
+				newEntry := NewCacheEntry(data)
+				newEntry.RawData = data
+
+				for name, values := range resp.Header {
+					for _, v := range values {
+						newEntry.Header.Add(name, v)
+					}
+				}
+
+				AddCacheEntry(r.RequestURI, newEntry)
+				ParseHTML(resp)
+			}
 		}
-	}
-	DebugPrint("WRITING HEADER", " CACHE")
+		// TODO: Send from cache
 
-	w.WriteHeader(resp.StatusCode)
-	_, err = io.Copy(w, resp.Body)
-	if err != nil {
-		http.Error(w, "Internal Server Error", 500)
-		DebugPrint("io.Copy error", "Issue with")
-		panic(err)
+	} else { // forward response to firefox
+		resp := NewRequest(w, r)
+		defer resp.Body.Close()
+
+		for name, values := range resp.Header {
+			for _, v := range values {
+				w.Header().Add(name, v)
+			}
+		}
+		w.WriteHeader(resp.StatusCode)
+
+		_, err := io.Copy(w, resp.Body)
+		if err != nil {
+			http.Error(w, "Internal Server Error", 500)
+			DebugPrint("io.Copy error", "Issue with")
+			panic(err)
+		}
 	}
 
 }
@@ -152,10 +158,9 @@ func ParseHTML(resp *http.Response) {
 // Fetch the img/link/script from the url provided in an html
 func RequestResource(a html.Attribute) {
 	resp, err := http.Get(a.Val)
-	entry := NewCacheEntry(*resp)
-	CheckError(err)
-
 	bytes, err := ioutil.ReadAll(resp.Body)
+	CheckError(err)
+	entry := NewCacheEntry(bytes)
 	CheckError(err)
 
 	entry.RawData = bytes
@@ -163,13 +168,8 @@ func RequestResource(a html.Attribute) {
 }
 
 // Fill in RawData
-func NewCacheEntry(resp http.Response) CacheEntry {
+func NewCacheEntry(data []byte) CacheEntry {
 	NewEntry := CacheEntry{}
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println("Something wrong while parsing data")
-	}
-
 	NewEntry.Dtype = http.DetectContentType(data)
 	NewEntry.CreateTime = time.Now()
 	NewEntry.LastAccess = time.Now()
@@ -200,4 +200,21 @@ func DebugPrint(title string, msg string) {
 	fmt.Println("============ " + title + " ===============")
 	fmt.Println(msg)
 	fmt.Println("---------------------------------------")
+}
+
+func NewRequest(w http.ResponseWriter, r *http.Request) *http.Response {
+	var resp *http.Response
+	var newRequest *http.Request
+	client := &http.Client{}
+
+	newRequest, err := http.NewRequest(r.Method, r.RequestURI, r.Body)
+
+	resp, err = client.Do(newRequest)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		fmt.Println("cannot fetch response in new request")
+	}
+
+	return resp
 }
