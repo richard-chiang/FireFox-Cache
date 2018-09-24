@@ -64,7 +64,10 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			// call request to get data for caching
 			// TODO: any error return http response with error code (parsing/ forwarding request)
 			resp := NewRequest(w, r)
-			defer resp.Body.Close()
+
+			if resp == nil {
+				return
+			}
 
 			// If response code is not 200, forward response to firefox.
 
@@ -87,6 +90,8 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				entry = newEntry
 				ParseHTML(resp)
 			}
+
+			resp.Body.Close()
 		}
 
 		for name, values := range entry.Header {
@@ -94,13 +99,17 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				w.Header().Add(name, v)
 			}
 		}
-		fmt.Println(entry.RawData)
 		w.WriteHeader(200)
 		_, err := io.Copy(w, bytes.NewReader(entry.RawData))
-		CheckError(err)
+		CheckError("io copy", err)
 
 	} else { // forward response to firefox
 		resp := NewRequest(w, r)
+
+		if resp == nil {
+			return
+		}
+
 		defer resp.Body.Close()
 
 		for name, values := range resp.Header {
@@ -168,11 +177,10 @@ func ParseHTML(resp *http.Response) {
 // Fetch the img/link/script from the url provided in an html
 func RequestResource(a html.Attribute) {
 	resp, err := http.Get(a.Val)
+	CheckError("request resource: get request", err)
 	bytes, err := ioutil.ReadAll(resp.Body)
-	CheckError(err)
+	CheckError("request resource: readall", err)
 	entry := NewCacheEntry(bytes)
-	CheckError(err)
-
 	entry.RawData = bytes
 	AddCacheEntry(a.Val, entry)
 }
@@ -200,9 +208,15 @@ func AddCacheEntry(URL string, entry CacheEntry) {
 // ===========================================================
 // ===========================================================
 
-func CheckError(err error) {
+func CheckError(msg string, err error) {
 	if err != nil {
+		fmt.Println("***********************************")
+		fmt.Println("***********************************")
+		fmt.Println(msg)
+		fmt.Println("***********************************")
 		log.Fatal(err)
+		fmt.Println("***********************************")
+		fmt.Println("***********************************")
 	}
 }
 
@@ -218,12 +232,18 @@ func NewRequest(w http.ResponseWriter, r *http.Request) *http.Response {
 	client := &http.Client{}
 
 	newRequest, err := http.NewRequest(r.Method, r.RequestURI, r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		fmt.Println("cannot fetch response in new request")
+		return nil
+	}
 
 	resp, err = client.Do(newRequest)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		fmt.Println("cannot fetch response in new request")
+		return nil
 	}
 
 	return resp
