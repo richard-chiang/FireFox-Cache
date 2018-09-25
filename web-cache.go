@@ -60,6 +60,7 @@ func main() {
 	CacheMutex = &sync.Mutex{}
 	RestoreCache()
 	log.Fatal(s.ListenAndServe())
+
 }
 
 func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
@@ -186,6 +187,10 @@ func ParseHTML(resp *http.Response) {
 func GetByHash(hashkey string) (CacheEntry, bool) {
 	CacheMutex.Lock()
 	entry, exist := MemoryCache[hashkey]
+	if exist == false {
+		entry.LastAccess = time.Now()
+		entry.UseFreq++
+	}
 	CacheMutex.Unlock()
 	return entry, exist
 }
@@ -221,7 +226,6 @@ func AddCacheEntry(URL string, entry CacheEntry) {
 	CacheMutex.Lock()
 	MemoryCache[URL] = entry
 	fileName := Encrypt(URL)
-	DebugPrint("File Name", "URL: "+URL+"\n"+"Hash Key: "+fileName)
 	WriteToDisk(fileName, entry)
 	CacheMutex.Unlock()
 }
@@ -266,6 +270,18 @@ func ReadFromDisk(URL string) CacheEntry {
 	err = json.Unmarshal(data, &cacheEntry)
 	CheckError("json unmarshal err", err)
 	return cacheEntry
+}
+
+func EvictLRU() {
+	oldestTime := time.Now()
+	oldestKey := ""
+	for key, cacheEntry := range MemoryCache {
+		if cacheEntry.LastAccess.Before(oldestTime) {
+			oldestKey = key
+			oldestTime = cacheEntry.LastAccess
+		}
+	}
+	delete(MemoryCache, oldestKey)
 }
 
 // ===========================================================
