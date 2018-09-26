@@ -209,10 +209,16 @@ func ParseHTML(resp *http.Response) {
 
 func GetByHash(hashkey string) (CacheEntry, bool) {
 	CacheMutex.Lock()
+
 	entry, exist := MemoryCache[hashkey]
-	if exist == false {
-		entry.LastAccess = time.Now()
-		entry.UseFreq++
+	if exist {
+		if isExpired(hashkey) {
+			DeleteCacheEntry(hashkey)
+			exist = false
+		} else {
+			entry.LastAccess = time.Now()
+			entry.UseFreq++
+		}
 	}
 	CacheMutex.Unlock()
 
@@ -254,7 +260,7 @@ func NewCacheEntry(data []byte) CacheEntry {
 // Atomic adding to the cache
 func AddCacheEntry(URL string, entry CacheEntry) {
 	CacheMutex.Lock()
-	for len(MemoryCache) > options.CacheSize {
+	for len(MemoryCache) >= options.CacheSize {
 		Evict()
 	}
 
@@ -278,7 +284,6 @@ func WriteToDisk(fileHash string, entry CacheEntry) {
 }
 
 func RestoreCache() {
-	// TODO: Check for expired
 	CacheMutex.Lock()
 	defer CacheMutex.Unlock()
 
@@ -288,6 +293,8 @@ func RestoreCache() {
 	for _, fileName := range files {
 		MemoryCache[fileName] = ReadFromDisk(fileName)
 	}
+
+	EvictExpired()
 }
 
 func Encrypt(input string) string {
@@ -312,17 +319,24 @@ func DeleteFromDisk(fileHash string) {
 	CheckError("remove file error", err)
 }
 
-func Evict() {
-	// TODO: check for expired
-	var KeyToEvict string
-	if options.EvictPolicy == "LRU" {
-		KeyToEvict = EvictLRU()
-	} else {
-		KeyToEvict = EvictLFU()
-	}
+func DeleteCacheEntry(hashkey string) {
+	delete(MemoryCache, hashkey)
+	DeleteFromDisk(hashkey)
+}
 
-	delete(MemoryCache, KeyToEvict)
-	DeleteFromDisk(KeyToEvict)
+func Evict() {
+	EvictExpired()
+
+	if len(MemoryCache) >= options.CacheSize {
+		var KeyToEvict string
+		if options.EvictPolicy == "LRU" {
+			KeyToEvict = EvictLRU()
+		} else {
+			KeyToEvict = EvictLFU()
+		}
+
+		DeleteCacheEntry(KeyToEvict)
+	}
 }
 
 func EvictLRU() string {
@@ -347,6 +361,14 @@ func EvictLFU() string {
 		}
 	}
 	return bestKey
+}
+
+func EvictExpired() {
+	for key := range MemoryCache {
+		if isExpired(key) {
+			DeleteCacheEntry(key)
+		}
+	}
 }
 
 func isExpired(hash string) bool {
