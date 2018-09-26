@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"crypto/sha256"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -254,7 +254,6 @@ func RequestResource(a html.Attribute) {
 		time.Sleep(time.Second)
 		resp, err = http.Get(a.Val)
 	}
-
 	CheckError("request resource: get request", err)
 	bytes, err := ioutil.ReadAll(resp.Body)
 	CheckError("request resource: readall", err)
@@ -321,7 +320,7 @@ func RestoreCache() {
 
 func Encrypt(input string) string {
 	var bytes []byte = []byte(input)
-	var code [32]byte = sha256.Sum256(bytes)
+	var code [20]byte = sha1.Sum(bytes)
 	var s string = string(code[:])
 	return strconv.QuoteToASCII(s)
 }
