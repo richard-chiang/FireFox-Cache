@@ -37,16 +37,23 @@ type CacheEntry struct {
 
 var CacheMutex *sync.Mutex
 var MemoryCache map[string]CacheEntry
+var EvictPolicy string
 
 const CacheFolderPath string = "./cache/"
 
 func main() {
 	// IpPort := os.Args[1] // send and receive data from Firefox
-	// ReplacementPolicy := os.Args[2]
+	// ReplacementPolicy := os.Args[2] // LFU or LRU
 	// CacheSize := os.Args[3]
 	// ExpirationTime := os.Args[4]
 
 	IpPort := "localhost:1243"
+	EvictPolicy = "LFU"
+
+	if !(EvictPolicy == "LRU") && !(EvictPolicy == "LFU") {
+		fmt.Println("Please enter the proper evict policy: LFU or LRU only")
+		os.Exit(1)
+	}
 
 	s := &http.Server{
 		Addr: IpPort,
@@ -272,7 +279,25 @@ func ReadFromDisk(URL string) CacheEntry {
 	return cacheEntry
 }
 
-func EvictLRU() {
+func DeleteFromDisk(fileHash string) {
+	err := os.Remove(fileHash)
+	CheckError("remove file error", err)
+}
+
+func Evict() {
+	var URLToEvict string
+	if EvictPolicy == "LRU" {
+		URLToEvict = EvictLRU()
+	} else {
+		URLToEvict = EvictLFU()
+	}
+
+	delete(MemoryCache, URLToEvict)
+	fileName := Encrypt(URLToEvict)
+	DeleteFromDisk(fileName)
+}
+
+func EvictLRU() string {
 	oldestTime := time.Now()
 	oldestKey := ""
 	for key, cacheEntry := range MemoryCache {
@@ -281,7 +306,19 @@ func EvictLRU() {
 			oldestTime = cacheEntry.LastAccess
 		}
 	}
-	delete(MemoryCache, oldestKey)
+	return oldestKey
+}
+
+func EvictLFU() string {
+	var mostFrequentNumber uint64
+	bestKey := ""
+	for key, cacheEntry := range MemoryCache {
+		if cacheEntry.UseFreq > mostFrequentNumber {
+			bestKey = key
+			mostFrequentNumber = cacheEntry.UseFreq
+		}
+	}
+	return bestKey
 }
 
 // ===========================================================
