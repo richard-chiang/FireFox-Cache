@@ -289,7 +289,7 @@ func RestoreCache() {
 
 	files, err := filepath.Glob(CacheFolderPath + "*")
 	CheckError("err restoring cache. Cannot fetch file names", err)
-
+	fmt.Println(files)
 	for _, fileName := range files {
 		MemoryCache[fileName] = ReadFromDisk(fileName)
 	}
@@ -364,11 +364,13 @@ func EvictLFU() string {
 }
 
 func EvictExpired() {
+	CacheMutex.Lock()
 	for key := range MemoryCache {
 		if isExpired(key) {
 			DeleteCacheEntry(key)
 		}
 	}
+	CacheMutex.Unlock()
 }
 
 func isExpired(hash string) bool {
