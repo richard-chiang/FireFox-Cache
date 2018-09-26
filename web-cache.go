@@ -162,6 +162,21 @@ func ForwardResponseToFireFox(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// b = ioutil.ReadAll(r.Body);
+// b[42] = 99;
+// r.Body = ioutil.NopCloser(bytes.NewBuffer(b))
+// r.ContentLength = int64(len(newBody))
+func parseHTML2(resp *http.Response) {
+	buf, err := ioutil.ReadAll(resp.Body)
+	CheckError("cannot read body in parse html 2", err)
+
+	///////// Modify html byte[]
+
+	///////
+	resp.Body = ioutil.NopCloser(bytes.NewBuffer(buf))
+	resp.ContentLength = int64(len(buf))
+}
+
 func ParseHTML(resp *http.Response) {
 	const LINK_TAG = "link"
 	const IMG_TAG = "img"
@@ -171,7 +186,6 @@ func ParseHTML(resp *http.Response) {
 
 	for {
 		token := cursor.Next()
-
 		switch token {
 		case html.ErrorToken:
 			return
