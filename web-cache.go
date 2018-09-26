@@ -35,25 +35,35 @@ type CacheEntry struct {
 	LastAccess time.Time
 }
 
+type UserOptions struct {
+	EvictPolicy    string
+	CacheSize      int
+	ExpirationTime time.Duration
+}
+
+var options UserOptions
 var CacheMutex *sync.Mutex
 var MemoryCache map[string]CacheEntry
-var EvictPolicy string
 
 const CacheFolderPath string = "./cache/"
 
 func main() {
+	options = UserOptions{
+		EvictPolicy:    "LFU",
+		CacheSize:      10,
+		ExpirationTime: time.Duration(10) * time.Second}
+
 	// IpPort := os.Args[1] // send and receive data from Firefox
 	// ReplacementPolicy := os.Args[2] // LFU or LRU
 	// CacheSize := os.Args[3]
-	// ExpirationTime := os.Args[4]
+	// ExpirationTime := os.Args[4] // time period in seconds after which an item in the cache is considered to be expired
 
 	IpPort := "localhost:1243"
-	EvictPolicy = "LFU"
 
-	if !(EvictPolicy == "LRU") && !(EvictPolicy == "LFU") {
-		fmt.Println("Please enter the proper evict policy: LFU or LRU only")
-		os.Exit(1)
-	}
+	// if !(EvictPolicy == "LRU") && !(EvictPolicy == "LFU") {
+	// 	fmt.Println("Please enter the proper evict policy: LFU or LRU only")
+	// 	os.Exit(1)
+	// }
 
 	s := &http.Server{
 		Addr: IpPort,
@@ -79,14 +89,15 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 
 		if !existInCache {
 			// call request to get data for caching
-			// TODO: any error return http response with error code (parsing/ forwarding request)
 			resp := NewRequest(w, r)
 
 			if resp == nil {
 				return
 			}
 
-			// TODO: If response code is not 200, forward response to firefox.
+			if resp.StatusCode != 200 {
+				ForwardResponseToFireFox(w, r)
+			}
 
 			// Create New Cache Entry
 			data, err := ioutil.ReadAll(resp.Body)
@@ -120,30 +131,35 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		_, err := io.Copy(w, bytes.NewReader(entry.RawData))
 		CheckError("io copy", err)
 
-	} else { // forward response to firefox
-		resp := NewRequest(w, r)
-
-		if resp == nil {
-			return
-		}
-
-		defer resp.Body.Close()
-
-		for name, values := range resp.Header {
-			for _, v := range values {
-				w.Header().Add(name, v)
-			}
-		}
-		w.WriteHeader(resp.StatusCode)
-
-		_, err := io.Copy(w, resp.Body)
-		if err != nil {
-			http.Error(w, "Internal Server Error", 500)
-			DebugPrint("io.Copy error", "Issue with")
-			panic(err)
-		}
+	} else {
+		ForwardResponseToFireFox(w, r)
 	}
 
+}
+
+func ForwardResponseToFireFox(w http.ResponseWriter, r *http.Request) {
+	// forward response to firefox
+	resp := NewRequest(w, r)
+
+	if resp == nil {
+		return
+	}
+
+	defer resp.Body.Close()
+
+	for name, values := range resp.Header {
+		for _, v := range values {
+			w.Header().Add(name, v)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+
+	_, err := io.Copy(w, resp.Body)
+	if err != nil {
+		http.Error(w, "Internal Server Error", 500)
+		DebugPrint("io.Copy error", "Issue with")
+		panic(err)
+	}
 }
 
 func ParseHTML(resp *http.Response) {
@@ -199,6 +215,7 @@ func GetByHash(hashkey string) (CacheEntry, bool) {
 		entry.UseFreq++
 	}
 	CacheMutex.Unlock()
+
 	return entry, exist
 }
 
@@ -210,6 +227,12 @@ func GetByURL(url string) (CacheEntry, bool) {
 // Fetch the img/link/script from the url provided in an html
 func RequestResource(a html.Attribute) {
 	resp, err := http.Get(a.Val)
+	fmt.Println("url: " + a.Val)
+	if err != nil {
+		time.Sleep(time.Second)
+		resp, err = http.Get(a.Val)
+	}
+
 	CheckError("request resource: get request", err)
 	bytes, err := ioutil.ReadAll(resp.Body)
 	CheckError("request resource: readall", err)
@@ -231,8 +254,12 @@ func NewCacheEntry(data []byte) CacheEntry {
 // Atomic adding to the cache
 func AddCacheEntry(URL string, entry CacheEntry) {
 	CacheMutex.Lock()
-	MemoryCache[URL] = entry
+	for len(MemoryCache) > options.CacheSize {
+		Evict()
+	}
+
 	fileName := Encrypt(URL)
+	MemoryCache[fileName] = entry
 	WriteToDisk(fileName, entry)
 	CacheMutex.Unlock()
 }
@@ -251,6 +278,7 @@ func WriteToDisk(fileHash string, entry CacheEntry) {
 }
 
 func RestoreCache() {
+	// TODO: Check for expired
 	CacheMutex.Lock()
 	defer CacheMutex.Unlock()
 
@@ -269,8 +297,8 @@ func Encrypt(input string) string {
 	return strconv.QuoteToASCII(s)
 }
 
-func ReadFromDisk(URL string) CacheEntry {
-	data, err := ioutil.ReadFile(URL)
+func ReadFromDisk(hash string) CacheEntry {
+	data, err := ioutil.ReadFile(hash)
 	CheckError("read error from disk", err)
 
 	var cacheEntry CacheEntry
@@ -280,21 +308,21 @@ func ReadFromDisk(URL string) CacheEntry {
 }
 
 func DeleteFromDisk(fileHash string) {
-	err := os.Remove(fileHash)
+	err := os.Remove(CacheFolderPath + fileHash)
 	CheckError("remove file error", err)
 }
 
 func Evict() {
-	var URLToEvict string
-	if EvictPolicy == "LRU" {
-		URLToEvict = EvictLRU()
+	// TODO: check for expired
+	var KeyToEvict string
+	if options.EvictPolicy == "LRU" {
+		KeyToEvict = EvictLRU()
 	} else {
-		URLToEvict = EvictLFU()
+		KeyToEvict = EvictLFU()
 	}
 
-	delete(MemoryCache, URLToEvict)
-	fileName := Encrypt(URLToEvict)
-	DeleteFromDisk(fileName)
+	delete(MemoryCache, KeyToEvict)
+	DeleteFromDisk(KeyToEvict)
 }
 
 func EvictLRU() string {
@@ -319,6 +347,16 @@ func EvictLFU() string {
 		}
 	}
 	return bestKey
+}
+
+func isExpired(hash string) bool {
+	cache, _ := MemoryCache[hash]
+	elapsed := time.Since(cache.CreateTime)
+	if elapsed > options.ExpirationTime {
+		return true
+	} else {
+		return false
+	}
 }
 
 // ===========================================================
