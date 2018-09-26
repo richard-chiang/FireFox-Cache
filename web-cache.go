@@ -73,6 +73,7 @@ func main() {
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
+
 	MemoryCache = map[string]CacheEntry{}
 	CacheMutex = &sync.Mutex{}
 	RestoreCache()
@@ -129,6 +130,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(200)
 		_, err := io.Copy(w, bytes.NewReader(entry.RawData))
+
 		CheckError("io copy", err)
 
 	} else {
@@ -290,11 +292,17 @@ func RestoreCache() {
 	files, err := filepath.Glob(CacheFolderPath + "*")
 	CheckError("err restoring cache. Cannot fetch file names", err)
 	fmt.Println(files)
+
 	for _, fileName := range files {
 		MemoryCache[fileName] = ReadFromDisk(fileName)
 	}
 
-	EvictExpired()
+	for key := range MemoryCache {
+		if isExpired(key) {
+			DeleteCacheEntry(key)
+		}
+	}
+	fmt.Println("Hello")
 }
 
 func Encrypt(input string) string {
