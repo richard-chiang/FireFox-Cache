@@ -304,9 +304,14 @@ func RestoreCache() {
 
 	files, err := filepath.Glob(CacheFolderPath + "*")
 	CheckError("err restoring cache. Cannot fetch file names", err)
-	fmt.Println(files)
 
 	for _, fileName := range files {
+		fileName = strings.TrimPrefix(fileName, "cache/")
+
+		if fileName == ".DS_Store" {
+			continue
+		}
+
 		MemoryCache[fileName] = ReadFromDisk(fileName)
 	}
 
@@ -315,7 +320,6 @@ func RestoreCache() {
 			DeleteCacheEntry(key)
 		}
 	}
-	fmt.Println("Hello")
 }
 
 func Encrypt(input string) string {
@@ -326,7 +330,7 @@ func Encrypt(input string) string {
 }
 
 func ReadFromDisk(hash string) CacheEntry {
-	data, err := ioutil.ReadFile(hash)
+	data, err := ioutil.ReadFile(CacheFolderPath + hash)
 	CheckError("read error from disk", err)
 
 	var cacheEntry CacheEntry
@@ -336,6 +340,7 @@ func ReadFromDisk(hash string) CacheEntry {
 }
 
 func DeleteFromDisk(fileHash string) {
+	fmt.Println(fileHash)
 	err := os.Remove(CacheFolderPath + fileHash)
 	CheckError("remove file error", err)
 }
