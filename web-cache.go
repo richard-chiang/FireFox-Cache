@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -117,7 +118,8 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				}
 				AddCacheEntry(r.RequestURI, newEntry)
 				entry = newEntry
-				ParseHTML(resp)
+				parseHTML2(r.RequestURI)
+				// ParseHTML(resp)
 			}
 
 			resp.Body.Close()
@@ -164,19 +166,64 @@ func ForwardResponseToFireFox(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// b = ioutil.ReadAll(r.Body);
-// b[42] = 99;
-// r.Body = ioutil.NopCloser(bytes.NewBuffer(b))
-// r.ContentLength = int64(len(newBody))
-func parseHTML2(resp *http.Response) {
-	buf, err := ioutil.ReadAll(resp.Body)
-	CheckError("cannot read body in parse html 2", err)
-
+func parseHTML2(url string) {
+	entry := ReadFromDisk(Encrypt(url))
+	buf := entry.RawData
 	///////// Modify html byte[]
+	pageContent := string(buf)
+
+	// extract anchor with src from html
+	re := regexp.MustCompile("<.*?src=\".*?\".*?>")
+	fmt.Println("regex")
+	tagsWithSRC := re.FindAllString(pageContent, -1)
+
+	// extract src from anchor, should be in order with tagsWithSRC
+	listOfSrc := make([]string, len(tagsWithSRC))
+	for i, tag := range tagsWithSRC {
+		re = regexp.MustCompile("src=\".*?\"")
+		src := re.FindAllString(tag, 1)[0]
+		listOfSrc[i] = src
+	}
+
+	// extract url from src, should be in order with tagsWithSRC
+	urls := make([]string, len(tagsWithSRC))
+	for i, src := range listOfSrc {
+		re = regexp.MustCompile("\".*?\"")
+		url = re.FindAllString(src, 1)[0]
+		url = url[1 : len(url)-1] // remove the first and last quotation mark
+		urls[i] = url
+	}
+
+	for i := 0; i < len(tagsWithSRC); i++ {
+		oldString := tagsWithSRC[i]
+		fmt.Println(oldString)
+		fmt.Println(urls[i])
+		fmt.Println("====================")
+		// strings.Replace(pageContent)
+	}
+
+	// for _, img := range listOfImg {
+	// 	re := regexp.MustCompile("^<img.*src=\".*?\".*?>$")
+	// 	fmt.Println("img")
+	// 	fmt.Println(re.FindAllString(img, 2))
+	// 	// strings.Replace(pageContent, img, )
+	// }
 
 	///////
-	resp.Body = ioutil.NopCloser(bytes.NewBuffer(buf))
-	resp.ContentLength = int64(len(buf))
+	// resp.Body = ioutil.NopCloser(bytes.NewBuffer(buf))
+	// resp.ContentLength = int64(len(buf))
+}
+
+func parseHTML3(resp *http.Response, url string) {
+	fileName := Encrypt(url)
+	outFile, err := os.Create(CacheFolderPath + fileName)
+	CheckError("cannot create html file", err)
+
+	defer outFile.Close()
+
+	_, err = io.Copy(outFile, resp.Body)
+	CheckError("cannot copy html to file", err)
+
 }
 
 func ParseHTML(resp *http.Response) {
@@ -190,26 +237,30 @@ func ParseHTML(resp *http.Response) {
 		token := cursor.Next()
 		switch token {
 		case html.ErrorToken:
+			fmt.Println()
 			return
 		case html.StartTagToken:
 			fetchedToken := cursor.Token()
 			switch fetchedToken.Data {
 			case LINK_TAG:
-				for _, a := range fetchedToken.Attr {
+				for i, a := range fetchedToken.Attr {
 					if a.Key == "href" {
 						RequestResource(a)
+						fetchedToken.Attr[i].Val = Encrypt(a.Val)
 					}
 				}
 			case IMG_TAG:
-				for _, a := range fetchedToken.Attr {
+				for i, a := range fetchedToken.Attr {
 					if a.Key == "src" {
 						RequestResource(a)
+						fetchedToken.Attr[i].Val = Encrypt(a.Val)
 					}
 				}
 			case SCRIPT_TAG:
-				for _, a := range fetchedToken.Attr {
+				for i, a := range fetchedToken.Attr {
 					if a.Key == "src" {
 						RequestResource(a)
+						fetchedToken.Attr[i].Val = Encrypt(a.Val)
 					}
 				}
 			}
@@ -340,7 +391,6 @@ func ReadFromDisk(hash string) CacheEntry {
 }
 
 func DeleteFromDisk(fileHash string) {
-	fmt.Println(fileHash)
 	err := os.Remove(CacheFolderPath + fileHash)
 	CheckError("remove file error", err)
 }
