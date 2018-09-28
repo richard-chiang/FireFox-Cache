@@ -55,13 +55,13 @@ func main() {
 		ExpirationTime: time.Duration(10) * time.Second}
 
 	// IpPort := os.Args[1] // send and receive data from Firefox
-	// ReplacementPolicy := os.Args[2] // LFU or LRU
+	// ReplacementPolicy := os.Args[2] // LFU or LRU or ELEPHANT
 	// CacheSize := os.Args[3]
 	// ExpirationTime := os.Args[4] // time period in seconds after which an item in the cache is considered to be expired
 
 	IpPort := "localhost:1243"
 
-	// if !(EvictPolicy == "LRU") && !(EvictPolicy == "LFU") {
+	// if !(EvictPolicy == "LRU") && !(EvictPolicy == "LFU") && !(EvictPolicy == "ELEPHANT") {
 	// 	fmt.Println("Please enter the proper evict policy: LFU or LRU only")
 	// 	os.Exit(1)
 	// }
@@ -118,8 +118,8 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				}
 				AddCacheEntry(r.RequestURI, newEntry)
 				entry = newEntry
-				parseHTML2(r.RequestURI)
-				// ParseHTML(resp)
+				//parseHTML2(r.RequestURI)
+				ParseHTML(resp)
 			}
 
 			resp.Body.Close()
@@ -400,6 +400,11 @@ func DeleteCacheEntry(hashkey string) {
 	DeleteFromDisk(hashkey)
 }
 
+func DeleteEntryElephant(hashkey string) {
+	delete(MemoryCache, hashkey)
+}
+
+
 func Evict() {
 	EvictExpired()
 
@@ -407,10 +412,13 @@ func Evict() {
 		var KeyToEvict string
 		if options.EvictPolicy == "LRU" {
 			KeyToEvict = EvictLRU()
-		} else {
+		} else if options.EvictPolicy == "LFU" {
 			KeyToEvict = EvictLFU()
+		} else {
+			KeyToEvict = EvictLRU()
+			DeleteEntryElephant(KeyToEvict)
+			return
 		}
-
 		DeleteCacheEntry(KeyToEvict)
 	}
 }
