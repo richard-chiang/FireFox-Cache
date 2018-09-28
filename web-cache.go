@@ -55,13 +55,13 @@ func main() {
 		ExpirationTime: time.Duration(10) * time.Second}
 
 	// IpPort := os.Args[1] // send and receive data from Firefox
-	// ReplacementPolicy := os.Args[2] // LFU or LRU
+	// ReplacementPolicy := os.Args[2] // LFU or LRU or ELEPHANT
 	// CacheSize := os.Args[3]
 	// ExpirationTime := os.Args[4] // time period in seconds after which an item in the cache is considered to be expired
 
 	IpPort := "localhost:1243"
 
-	// if !(EvictPolicy == "LRU") && !(EvictPolicy == "LFU") {
+	// if !(EvictPolicy == "LRU") && !(EvictPolicy == "LFU") && !(EvictPolicy == "ELEPHANT") {
 	// 	fmt.Println("Please enter the proper evict policy: LFU or LRU only")
 	// 	os.Exit(1)
 	// }
@@ -89,7 +89,12 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		// Cache <- Response
 		entry, existInCache := GetByURL(r.RequestURI)
 
+		if !existInCache && options.EvictPolicy == "ELEPHANT" {
+			entry, existInCache = GetFromDiskUrl(r.RequestURI)
+		}
+
 		if !existInCache {
+
 			// call request to get data for caching
 			resp := NewRequest(w, r)
 
@@ -98,9 +103,14 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if resp.StatusCode != 200 {
-				ForwardResponseToFireFox(w, r)
+				ForwardResponseToFireFox(w, resp)
+				return
 			}
-
+			CacheControl := resp.Header.Get("Cache-Control")
+			if CacheControl == "no-cache" {
+				ForwardResponseToFireFox(w, resp)
+				return
+			}
 			// Create New Cache Entry
 			data, err := ioutil.ReadAll(resp.Body)
 			if err != nil {
@@ -137,14 +147,14 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		CheckError("io copy", err)
 
 	} else {
-		ForwardResponseToFireFox(w, r)
+		resp := NewRequest(w, r)
+		ForwardResponseToFireFox(w, resp)
 	}
 
 }
 
-func ForwardResponseToFireFox(w http.ResponseWriter, r *http.Request) {
+func ForwardResponseToFireFox(w http.ResponseWriter, resp *http.Response) {
 	// forward response to firefox
-	resp := NewRequest(w, r)
 
 	if resp == nil {
 		return
@@ -271,6 +281,38 @@ func ParseHTML(resp *http.Response) {
 // ===========================================================
 // ===========================================================
 
+func GetFromDiskHash(hashkey string) (CacheEntry, bool) {
+	CacheMutex.Lock()
+	defer CacheMutex.Unlock()
+
+	files, err := filepath.Glob(CacheFolderPath + "*")
+	CheckError("err restoring cache. Cannot fetch file names", err)
+
+	for _, fileName := range files {
+		fileName = strings.TrimPrefix(fileName, "cache/")
+
+		if fileName == ".DS_Store" {
+			continue
+		}
+		// If the file was found
+		if fileName == hashkey {
+			// Delete from memory if the cache is too big
+			MemoryCache[fileName] = ReadFromDisk(fileName)
+			for len(MemoryCache) >= options.CacheSize {
+				Evict()
+			}
+			return MemoryCache[fileName], true
+		}
+	}
+
+	return CacheEntry{}, false
+}
+
+func GetFromDiskUrl(url string) (CacheEntry, bool) {
+	hashkey := Encrypt(url)
+	return GetFromDiskHash(hashkey)
+}
+
 func GetByHash(hashkey string) (CacheEntry, bool) {
 	CacheMutex.Lock()
 
@@ -377,7 +419,6 @@ func RestoreCache() {
 		if fileName == ".DS_Store" {
 			continue
 		}
-
 		MemoryCache[fileName] = ReadFromDisk(fileName)
 	}
 
@@ -415,6 +456,10 @@ func DeleteCacheEntry(hashkey string) {
 	DeleteFromDisk(hashkey)
 }
 
+func DeleteEntryElephant(hashkey string) {
+	delete(MemoryCache, hashkey)
+}
+
 func Evict() {
 	EvictExpired()
 
@@ -422,10 +467,13 @@ func Evict() {
 		var KeyToEvict string
 		if options.EvictPolicy == "LRU" {
 			KeyToEvict = EvictLRU()
-		} else {
+		} else if options.EvictPolicy == "LFU" {
 			KeyToEvict = EvictLFU()
+		} else {
+			KeyToEvict = EvictLRU()
+			DeleteEntryElephant(KeyToEvict)
+			return
 		}
-
 		DeleteCacheEntry(KeyToEvict)
 	}
 }
