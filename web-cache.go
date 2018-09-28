@@ -89,7 +89,12 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		// Cache <- Response
 		entry, existInCache := GetByURL(r.RequestURI)
 
+		if !existInCache && options.EvictPolicy == "ELEPHANT" {
+			entry, existInCache = GetFromDiskUrl(r.RequestURI)
+		}
+
 		if !existInCache {
+
 			// call request to get data for caching
 			resp := NewRequest(w, r)
 
@@ -274,6 +279,38 @@ func ParseHTML(resp *http.Response) {
 // ===========================================================
 // ===========================================================
 
+func GetFromDiskHash(hashkey string) (CacheEntry, bool) {
+	CacheMutex.Lock()
+	defer CacheMutex.Unlock()
+
+	files, err := filepath.Glob(CacheFolderPath + "*")
+	CheckError("err restoring cache. Cannot fetch file names", err)
+
+	for _, fileName := range files {
+		fileName = strings.TrimPrefix(fileName, "cache/")
+
+		if fileName == ".DS_Store" {
+			continue
+		}
+		// If the file was found
+		if fileName == hashkey {
+			// Delete from memory if the cache is too big
+			for len(MemoryCache) >= options.CacheSize {
+				Evict()
+			}
+			MemoryCache[fileName] = ReadFromDisk(fileName)
+			return MemoryCache[fileName], true
+		}
+	}
+
+	return CacheEntry{}, false
+}
+
+func GetFromDiskUrl(url string) (CacheEntry, bool) {
+	hashkey := Encrypt(url)
+	return GetFromDiskHash(hashkey)
+}
+
 func GetByHash(hashkey string) (CacheEntry, bool) {
 	CacheMutex.Lock()
 
@@ -362,7 +399,6 @@ func RestoreCache() {
 		if fileName == ".DS_Store" {
 			continue
 		}
-
 		MemoryCache[fileName] = ReadFromDisk(fileName)
 	}
 
