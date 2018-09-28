@@ -103,9 +103,14 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if resp.StatusCode != 200 {
-				ForwardResponseToFireFox(w, r)
+				ForwardResponseToFireFox(w, resp)
+				return
 			}
-
+			CacheControl := resp.Header.Get("Cache-Control")
+			if CacheControl == "no-cache" {
+				ForwardResponseToFireFox(w, resp)
+				return
+			}
 			// Create New Cache Entry
 			data, err := ioutil.ReadAll(resp.Body)
 			if err != nil {
@@ -141,14 +146,14 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		CheckError("io copy", err)
 
 	} else {
-		ForwardResponseToFireFox(w, r)
+		resp := NewRequest(w, r)
+		ForwardResponseToFireFox(w, resp)
 	}
 
 }
 
-func ForwardResponseToFireFox(w http.ResponseWriter, r *http.Request) {
+func ForwardResponseToFireFox(w http.ResponseWriter, resp *http.Response) {
 	// forward response to firefox
-	resp := NewRequest(w, r)
 
 	if resp == nil {
 		return
@@ -295,10 +300,10 @@ func GetFromDiskHash(hashkey string) (CacheEntry, bool) {
 		// If the file was found
 		if fileName == hashkey {
 			// Delete from memory if the cache is too big
+			MemoryCache[fileName] = ReadFromDisk(fileName)
 			for len(MemoryCache) >= options.CacheSize {
 				Evict()
 			}
-			MemoryCache[fileName] = ReadFromDisk(fileName)
 			return MemoryCache[fileName], true
 		}
 	}
