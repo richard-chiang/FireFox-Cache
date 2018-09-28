@@ -117,9 +117,9 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				AddCacheEntry(r.RequestURI, newEntry)
-				entry = newEntry
-				parseHTML2(r.RequestURI)
-				// ParseHTML(resp)
+				ParseHTML(resp)
+				entry = parseHTMLFromFile(r.RequestURI)
+				AddCacheEntry(r.RequestURI, entry)
 			}
 
 			resp.Body.Close()
@@ -131,6 +131,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		w.WriteHeader(200)
+
 		_, err := io.Copy(w, bytes.NewReader(entry.RawData))
 
 		CheckError("io copy", err)
@@ -166,21 +167,37 @@ func ForwardResponseToFireFox(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func parseHTML2(url string) {
+func parseHTMLFromFile(url string) CacheEntry {
 	entry := ReadFromDisk(Encrypt(url))
 	buf := entry.RawData
 	///////// Modify html byte[]
 	pageContent := string(buf)
+	imgChangeList := ParseElementChangeList("img", "src", pageContent)
+	linkChangeList := ParseElementChangeList("link", "href", pageContent)
+	jsChangeList := ParseElementChangeList("script", "src", pageContent)
 
+	finalChangeList := append(imgChangeList, linkChangeList...)
+	finalChangeList = append(finalChangeList, jsChangeList...)
+
+	replacer := strings.NewReplacer(finalChangeList...)
+	pageWithEncryptedLink := replacer.Replace(pageContent)
+	newBuf := []byte(pageWithEncryptedLink)
+	entry.RawData = newBuf
+	return entry
+}
+
+// tagData = "img"
+// keyword = "src"
+func ParseElementChangeList(tagData string, keyword string, content string) []string {
 	// extract anchor with src from html
-	re := regexp.MustCompile("<.*?src=\".*?\".*?>")
-	fmt.Println("regex")
-	tagsWithSRC := re.FindAllString(pageContent, -1)
+	re := regexp.MustCompile("<" + tagData + ".*?" + keyword + "=\".*?\".*?>")
+
+	tagsWithSRC := re.FindAllString(content, -1)
 
 	// extract src from anchor, should be in order with tagsWithSRC
 	listOfSrc := make([]string, len(tagsWithSRC))
 	for i, tag := range tagsWithSRC {
-		re = regexp.MustCompile("src=\".*?\"")
+		re = regexp.MustCompile(keyword + "=\".*?\"")
 		src := re.FindAllString(tag, 1)[0]
 		listOfSrc[i] = src
 	}
@@ -189,41 +206,24 @@ func parseHTML2(url string) {
 	urls := make([]string, len(tagsWithSRC))
 	for i, src := range listOfSrc {
 		re = regexp.MustCompile("\".*?\"")
-		url = re.FindAllString(src, 1)[0]
+		url := re.FindAllString(src, 1)[0]
 		url = url[1 : len(url)-1] // remove the first and last quotation mark
 		urls[i] = url
 	}
 
-	for i := 0; i < len(tagsWithSRC); i++ {
-		oldString := tagsWithSRC[i]
-		fmt.Println(oldString)
-		fmt.Println(urls[i])
-		fmt.Println("====================")
-		// strings.Replace(pageContent)
+	returnChangeList := make([]string, len(tagsWithSRC)*2)
+
+	for i := 0; i < len(tagsWithSRC); i += 2 {
+		tagString := tagsWithSRC[i]
+		srcString := listOfSrc[i]
+		urlString := urls[i]
+		newSRCString := strings.Replace(srcString, urlString, Encrypt(urlString), -1)
+		newTagString := strings.Replace(tagString, srcString, newSRCString, -1)
+		returnChangeList[i] = tagString
+		returnChangeList[i+1] = newTagString
 	}
 
-	// for _, img := range listOfImg {
-	// 	re := regexp.MustCompile("^<img.*src=\".*?\".*?>$")
-	// 	fmt.Println("img")
-	// 	fmt.Println(re.FindAllString(img, 2))
-	// 	// strings.Replace(pageContent, img, )
-	// }
-
-	///////
-	// resp.Body = ioutil.NopCloser(bytes.NewBuffer(buf))
-	// resp.ContentLength = int64(len(buf))
-}
-
-func parseHTML3(resp *http.Response, url string) {
-	fileName := Encrypt(url)
-	outFile, err := os.Create(CacheFolderPath + fileName)
-	CheckError("cannot create html file", err)
-
-	defer outFile.Close()
-
-	_, err = io.Copy(outFile, resp.Body)
-	CheckError("cannot copy html to file", err)
-
+	return returnChangeList
 }
 
 func ParseHTML(resp *http.Response) {
@@ -243,24 +243,21 @@ func ParseHTML(resp *http.Response) {
 			fetchedToken := cursor.Token()
 			switch fetchedToken.Data {
 			case LINK_TAG:
-				for i, a := range fetchedToken.Attr {
+				for _, a := range fetchedToken.Attr {
 					if a.Key == "href" {
 						RequestResource(a)
-						fetchedToken.Attr[i].Val = Encrypt(a.Val)
 					}
 				}
 			case IMG_TAG:
-				for i, a := range fetchedToken.Attr {
+				for _, a := range fetchedToken.Attr {
 					if a.Key == "src" {
 						RequestResource(a)
-						fetchedToken.Attr[i].Val = Encrypt(a.Val)
 					}
 				}
 			case SCRIPT_TAG:
-				for i, a := range fetchedToken.Attr {
+				for _, a := range fetchedToken.Attr {
 					if a.Key == "src" {
 						RequestResource(a)
-						fetchedToken.Attr[i].Val = Encrypt(a.Val)
 					}
 				}
 			}
@@ -339,16 +336,34 @@ func AddCacheEntry(URL string, entry CacheEntry) {
 func WriteToDisk(fileHash string, entry CacheEntry) {
 	bytes, err := json.Marshal(entry)
 	CheckError("json marshal error", err)
+	filePath := CacheFolderPath + fileHash
 
-	file, err := os.Create(CacheFolderPath + fileHash)
-	CheckError("Create File Error", err)
+	_, err = os.Stat(filePath)
+	if err != nil { // file does not exist, do create
+		file, err := os.Create(filePath)
+		CheckError("Create File Error", err)
+		defer file.Close()
 
-	writer := bufio.NewWriter(file)
-	writer.Write(bytes)
-	writer.Flush()
-	file.Close()
+		writer := bufio.NewWriter(file)
+		writer.Write(bytes)
+		writer.Flush()
+	} else { // file exist, do write
+		file, err := os.OpenFile(filePath, os.O_WRONLY, 0666)
+		CheckError("open existing file error", err)
+		defer file.Close()
+
+		bufferedWriter := bufio.NewWriter(file)
+		bytesWritten, err := bufferedWriter.Write(bytes)
+		if err != nil || bytesWritten != len(bytes) {
+			fmt.Println(err.Error())
+			fmt.Println("maybe not enough bytes written on file")
+			return
+		}
+
+		bufferedWriter.Flush()
+		bufferedWriter.Reset(bufferedWriter)
+	}
 }
-
 func RestoreCache() {
 	CacheMutex.Lock()
 	defer CacheMutex.Unlock()
