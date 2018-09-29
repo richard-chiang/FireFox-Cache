@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="6b495c7f-9aa4-4559-94ce-2894e08a9a3f" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/web-cache.go" beforeDir="false" afterPath="$PROJECT_DIR$/web-cache.go" afterDir="false" />
-    </list>
+    <list default="true" id="6b495c7f-9aa4-4559-94ce-2894e08a9a3f" name="Default Changelist" comment="" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -33,13 +31,13 @@
       </usages-collector>
       <usages-collector id="statistics.file.extensions.edit">
         <counts>
-          <entry key="go" value="2132" />
+          <entry key="go" value="2142" />
           <entry key="txt" value="22" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.types.edit">
         <counts>
-          <entry key="Go" value="2132" />
+          <entry key="Go" value="2142" />
           <entry key="PLAIN_TEXT" value="22" />
         </counts>
       </usages-collector>
@@ -55,8 +53,8 @@
       <file pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/web-cache.go">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="288">
-              <caret line="110" column="16" selection-start-line="110" selection-start-column="16" selection-end-line="110" selection-end-column="16" />
+            <state relative-caret-position="-6617">
+              <caret line="110" column="48" selection-start-line="110" selection-start-column="48" selection-end-line="110" selection-end-column="48" />
             </state>
           </provider>
         </entry>
@@ -70,6 +68,7 @@
       <find>Evict</find>
       <find>deleteCacheEn</find>
       <find>ReadFromDisk</find>
+      <find>ForwardResponseToFireFox</find>
     </findStrings>
   </component>
   <component name="GOROOT" path="/usr/local/go" />
@@ -89,7 +88,7 @@
     <detection-done>true</detection-done>
     <sorting>DEFINITION_ORDER</sorting>
   </component>
-  <component name="ProjectFrameBounds" extendedState="6">
+  <component name="ProjectFrameBounds" extendedState="7">
     <option name="x" value="67" />
     <option name="y" value="25" />
     <option name="width" value="1853" />
@@ -163,8 +162,7 @@
     </recent_temporary>
   </component>
   <component name="ToolWindowManager">
-    <frame x="67" y="25" width="1853" height="1055" extended-state="6" />
-    <editor active="true" />
+    <frame x="67" y="25" width="1853" height="1055" extended-state="7" />
     <layout>
       <window_info content_ui="combo" id="Project" order="0" visible="true" weight="0.123962365" />
       <window_info id="Structure" order="1" side_tool="true" weight="0.25" />
@@ -202,8 +200,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/web-cache.go">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="288">
-          <caret line="110" column="16" selection-start-line="110" selection-start-column="16" selection-end-line="110" selection-end-column="16" />
+        <state relative-caret-position="-6617">
+          <caret line="110" column="48" selection-start-line="110" selection-start-column="48" selection-end-line="110" selection-end-column="48" />
         </state>
       </provider>
     </entry>
