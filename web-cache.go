@@ -182,6 +182,10 @@ func parseHTMLFromFile(url string) CacheEntry {
 	buf := entry.RawData
 	///////// Modify html byte[]
 	pageContent := string(buf)
+
+	find := "<link href=\"http://static.tianyaui.com/global/ty/TY.css\" type=\"text/css\" rel=\"stylesheet\">"
+	testElementDetection(find, pageContent)
+
 	imgChangeList := ParseElementChangeList("img", "src", pageContent)
 	linkChangeList := ParseElementChangeList("link", "href", pageContent)
 	jsChangeList := ParseElementChangeList("script", "src", pageContent)
@@ -196,6 +200,17 @@ func parseHTMLFromFile(url string) CacheEntry {
 	return entry
 }
 
+// temperory function: just for testing if a link can be found
+func testElementDetection(find, content string) {
+	re := regexp.MustCompile(find)
+
+	tags := re.FindAllString(content, -1)
+	for _, tag := range tags {
+		fmt.Println(tag)
+	}
+}
+
+// example
 // tagData = "img"
 // keyword = "src"
 func ParseElementChangeList(tagData string, keyword string, content string) []string {
@@ -227,7 +242,8 @@ func ParseElementChangeList(tagData string, keyword string, content string) []st
 		tagString := tagsWithSRC[i]
 		srcString := listOfSrc[i]
 		urlString := urls[i]
-		newSRCString := strings.Replace(srcString, urlString, Encrypt(urlString), -1)
+		newURLString := Encrypt(urlString)
+		newSRCString := strings.Replace(srcString, urlString, newURLString, -1)
 		newTagString := strings.Replace(tagString, srcString, newSRCString, -1)
 		returnChangeList[i] = tagString
 		returnChangeList[i+1] = newTagString
@@ -438,8 +454,14 @@ func RestoreCache() {
 func Encrypt(input string) string {
 	var bytes []byte = []byte(input)
 	var code [20]byte = sha1.Sum(bytes)
-	var s string = string(code[:])
-	return strconv.QuoteToASCII(s)
+	var s string = strconv.QuoteToASCII(string(code[:]))
+	if len(s) > 0 && s[0] == '"' {
+		s = s[1:]
+	}
+	if len(s) > 0 && s[len(s)-1] == '"' {
+		s = s[:len(s)-1]
+	}
+	return s
 }
 
 func ReadFromDisk(hash string) CacheEntry {
