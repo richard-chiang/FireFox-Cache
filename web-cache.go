@@ -51,7 +51,7 @@ const CacheFolderPath string = "./cache/"
 func main() {
 	options = UserOptions{
 		EvictPolicy:    "LFU",
-		CacheSize:      10,
+		CacheSize:      200,
 		ExpirationTime: time.Duration(10) * time.Second}
 
 	// IpPort := os.Args[1] // send and receive data from Firefox
@@ -127,11 +127,16 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				PrintLine("129")
-				AddCacheEntry(r.RequestURI, newEntry)
+				fmt.Println("==========================")
+				fmt.Println("before save file" + r.RequestURI)
+				fmt.Println("before save file" + Encrypt(r.RequestURI))
+				AddCacheEntry(r.RequestURI, newEntry) // save original html
+				fmt.Println("after save file" + Encrypt(r.RequestURI))
 				PrintLine("131")
-				ParseHTML(data)
+				ParseHTML(data) // grab resources
 				PrintLine("133")
-				entry = parseHTMLFromFile(r.RequestURI)
+				fmt.Println("before read file" + Encrypt(r.RequestURI))
+				entry = parseHTMLFromFile(r.RequestURI) // modify html
 				PrintLine("135")
 				AddCacheEntry(r.RequestURI, entry)
 				PrintLine("137")
@@ -186,9 +191,11 @@ func ForwardResponseToFireFox(w http.ResponseWriter, resp *http.Response) {
 func parseHTMLFromFile(url string) CacheEntry {
 	PrintLine("181")
 	entry := ReadFromDisk(Encrypt(url))
+	PrintLine("189")
 	buf := entry.RawData
 	///////// Modify html byte[]
 	pageContent := string(buf)
+	PrintLine("193")
 
 	find := "<link href=\"http://static.tianyaui.com/global/ty/TY.css\" type=\"text/css\" rel=\"stylesheet\">"
 	testElementDetection(find, pageContent)
@@ -300,7 +307,6 @@ func ParseHTML(resp []byte) {
 				}
 			case SCRIPT_TAG:
 				for _, a := range fetchedToken.Attr {
-					fmt.Println("Start key, value", a.Key, a.Val)
 					if a.Key == "src" && strings.HasPrefix(a.Val, "http:") {
 						fmt.Println("Start all attribute: ", a.Val)
 						PrintLine("301")
@@ -468,7 +474,6 @@ func RestoreCache() {
 
 	for _, fileName := range files {
 		fileName = strings.TrimPrefix(fileName, "cache/")
-		fmt.Println(fileName)
 		if fileName == ".DS_Store" {
 			continue
 		}
