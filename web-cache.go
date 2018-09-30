@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/sha1"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -426,6 +426,7 @@ func WriteToDisk(fileHash string, entry CacheEntry) {
 
 		bufferedWriter.Flush()
 		bufferedWriter.Reset(bufferedWriter)
+		os.Truncate(filePath, int64(bytesWritten))
 	}
 }
 func RestoreCache() {
@@ -437,7 +438,7 @@ func RestoreCache() {
 
 	for _, fileName := range files {
 		fileName = strings.TrimPrefix(fileName, "cache/")
-
+		fmt.Println(fileName)
 		if fileName == ".DS_Store" {
 			continue
 		}
@@ -451,18 +452,14 @@ func RestoreCache() {
 	}
 }
 
+
 func Encrypt(input string) string {
-	var bytes []byte = []byte(input)
-	var code [20]byte = sha1.Sum(bytes)
-	var s string = strconv.QuoteToASCII(string(code[:]))
-	if len(s) > 0 && s[0] == '"' {
-		s = s[1:]
-	}
-	if len(s) > 0 && s[len(s)-1] == '"' {
-		s = s[:len(s)-1]
-	}
-	return s
+	h := sha1.New()
+	h.Write([]byte(input))
+	sha := base64.URLEncoding.EncodeToString(h.Sum(nil))
+	return sha
 }
+
 
 func ReadFromDisk(hash string) CacheEntry {
 	data, err := ioutil.ReadFile(CacheFolderPath + hash)
