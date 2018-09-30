@@ -197,13 +197,12 @@ func parseHTMLFromFile(url string) CacheEntry {
 	buf := entry.RawData
 	///////// Modify html byte[]
 	pageContent := string(buf)
-	PrintLine("193")
-
-	find := "<link href=\"http://static.tianyaui.com/global/ty/TY.css\" type=\"text/css\" rel=\"stylesheet\">"
-	testElementDetection(find, pageContent)
 	PrintLine("189")
 
+	///https://vignette.wikia.nocookie.net/9e52ce83-d22f-42e1-8a35-2923b2b88690/scale-to-width-down/30
 	imgChangeList := ParseElementChangeList("img", "src", pageContent)
+	fmt.Println(imgChangeList)
+
 	linkChangeList := ParseElementChangeList("link", "href", pageContent)
 	jsChangeList := ParseElementChangeList("script", "src", pageContent)
 
@@ -232,47 +231,25 @@ func testElementDetection(find, content string) {
 // example
 // tagData = "img"
 // keyword = "src"
-func ParseElementChangeList(tagData string, keyword string, content string) []string {
+func ParseElementChangeList(tagData string, keyword string, content string) (returnChangeList []string) {
 	PrintLine("218")
-	// extract anchor with src from html
-	re := regexp.MustCompile("<" + tagData + ".*?" + keyword + "=\".*?\".*?>")
+	regexString := `<` + tagData + `[^>]+\b` + keyword + `=["']([^"']+)["'][^>]+>`
+	re := regexp.MustCompile(regexString)
+	data := re.FindAllStringSubmatch(content, -1)
 
-	tagsWithSRC := re.FindAllString(content, -1)
+	for i := range data {
+		urlString := data[i][1]
+		tagString := data[i][0]
 
-	// extract src from anchor, should be in order with tagsWithSRC
-	listOfSrc := make([]string, len(tagsWithSRC))
-	for i, tag := range tagsWithSRC {
-		re = regexp.MustCompile(keyword + "=\".*?\"")
-		src := re.FindAllString(tag, 1)[0]
-		listOfSrc[i] = src
-	}
-
-	// extract url from src, should be in order with tagsWithSRC
-	urls := make([]string, len(tagsWithSRC))
-	for i, src := range listOfSrc {
-		re = regexp.MustCompile("\".*?\"")
-		url := re.FindAllString(src, 1)[0]
-		url = url[1 : len(url)-1] // remove the first and last quotation mark
-		urls[i] = url
-	}
-
-	var returnChangeList []string
-
-	for i := 0; i < len(tagsWithSRC); i += 2 {
-		tagString := tagsWithSRC[i]
-		srcString := listOfSrc[i]
-		urlString := urls[i]
 		if strings.HasPrefix(urlString, "http") {
 			newURLString := Encrypt(urlString)
-			fmt.Println("CHANGING URLS", urlString, newURLString)
-			newSRCString := strings.Replace(srcString, urlString, newURLString, -1)
-			newTagString := strings.Replace(tagString, srcString, newSRCString, -1)
+			newTagString := strings.Replace(tagString, urlString, newURLString, -1)
 			returnChangeList = append(returnChangeList, tagString)
 			returnChangeList = append(returnChangeList, newTagString)
 		}
 	}
 
-	return returnChangeList
+	return
 }
 
 func ParseHTML(resp []byte) {
@@ -297,7 +274,6 @@ func ParseHTML(resp []byte) {
 			case LINK_TAG:
 				for _, a := range fetchedToken.Attr {
 					if a.Key == "href" && strings.HasPrefix(a.Val, "http") {
-						fmt.Println("Loading link: ", Encrypt(a.Val))
 						PrintLine("287")
 						RequestResource(a)
 						PrintLine("289")
@@ -306,7 +282,6 @@ func ParseHTML(resp []byte) {
 			case IMG_TAG:
 				for _, a := range fetchedToken.Attr {
 					if a.Key == "src" && strings.HasPrefix(a.Val, "http") {
-						fmt.Println("Loading image: ", Encrypt(a.Val))
 						PrintLine("293")
 						RequestResource(a)
 						PrintLine("297")
@@ -316,7 +291,6 @@ func ParseHTML(resp []byte) {
 				for _, a := range fetchedToken.Attr {
 
 					if a.Key == "src" && strings.HasPrefix(a.Val, "http") {
-						fmt.Println("Loading script: ", Encrypt(a.Val))
 						PrintLine("301")
 						RequestResource(a)
 						PrintLine("307")
