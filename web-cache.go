@@ -89,6 +89,14 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		// Cache <- Response
 		entry, existInCache := GetByURL(r.RequestURI)
 
+		if !existInCache {
+			hashArr := strings.Split(r.RequestURI, "/")
+			if len(hashArr) > 3 {
+				hash := hashArr[3]
+				entry, existInCache = GetByHash(hash)
+			}
+		}
+
 		if !existInCache && options.EvictPolicy == "ELEPHANT" {
 			entry, existInCache = GetFromDiskUrl(r.RequestURI)
 		}
@@ -116,7 +124,6 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				fmt.Println("Something wrong while parsing data")
 			}
-
 			if strings.Contains(http.DetectContentType(data), "text/html") {
 				newEntry := NewCacheEntry(data)
 				newEntry.RawData = data
@@ -249,17 +256,20 @@ func ParseElementChangeList(tagData string, keyword string, content string) []st
 		urls[i] = url
 	}
 
-	returnChangeList := make([]string, len(tagsWithSRC)*2)
+	var returnChangeList []string
 
 	for i := 0; i < len(tagsWithSRC); i += 2 {
 		tagString := tagsWithSRC[i]
 		srcString := listOfSrc[i]
 		urlString := urls[i]
-		newURLString := Encrypt(urlString)
-		newSRCString := strings.Replace(srcString, urlString, newURLString, -1)
-		newTagString := strings.Replace(tagString, srcString, newSRCString, -1)
-		returnChangeList[i] = tagString
-		returnChangeList[i+1] = newTagString
+		if strings.HasPrefix(urlString, "http") {
+			newURLString := Encrypt(urlString)
+			fmt.Println("CHANGING URLS", urlString, newURLString)
+			newSRCString := strings.Replace(srcString, urlString, newURLString, -1)
+			newTagString := strings.Replace(tagString, srcString, newSRCString, -1)
+			returnChangeList = append(returnChangeList, tagString)
+			returnChangeList = append(returnChangeList, newTagString)
+		}
 	}
 
 	return returnChangeList
@@ -287,6 +297,7 @@ func ParseHTML(resp []byte) {
 			case LINK_TAG:
 				for _, a := range fetchedToken.Attr {
 					if a.Key == "href" && strings.HasPrefix(a.Val, "http") {
+						fmt.Println("Loading link: ", Encrypt(a.Val))
 						PrintLine("287")
 						RequestResource(a)
 						PrintLine("289")
@@ -295,6 +306,7 @@ func ParseHTML(resp []byte) {
 			case IMG_TAG:
 				for _, a := range fetchedToken.Attr {
 					if a.Key == "src" && strings.HasPrefix(a.Val, "http") {
+						fmt.Println("Loading image: ", Encrypt(a.Val))
 						PrintLine("293")
 						RequestResource(a)
 						PrintLine("297")
@@ -304,7 +316,7 @@ func ParseHTML(resp []byte) {
 				for _, a := range fetchedToken.Attr {
 
 					if a.Key == "src" && strings.HasPrefix(a.Val, "http") {
-						fmt.Println("Start all attribute: ", Encrypt(a.Val))
+						fmt.Println("Loading script: ", Encrypt(a.Val))
 						PrintLine("301")
 						RequestResource(a)
 						PrintLine("307")
@@ -358,7 +370,7 @@ func GetFromDiskUrl(url string) (CacheEntry, bool) {
 }
 
 // hostname: http://example.com
-func GetByHash(hostname, hashkey string) (CacheEntry, bool) {
+func GetByHash(hashkey string) (CacheEntry, bool) {
 	CacheMutex.Lock()
 
 	entry, exist := MemoryCache[hashkey]
