@@ -127,15 +127,10 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				PrintLine("129")
-				fmt.Println("==========================")
-				fmt.Println("before save file" + r.RequestURI)
-				fmt.Println("before save file" + Encrypt(r.RequestURI))
 				AddCacheEntry(r.RequestURI, newEntry) // save original html
-				fmt.Println("after save file" + Encrypt(r.RequestURI))
 				PrintLine("131")
 				ParseHTML(data) // grab resources
 				PrintLine("133")
-				fmt.Println("before read file" + Encrypt(r.RequestURI))
 				entry = parseHTMLFromFile(r.RequestURI) // modify html
 				PrintLine("135")
 				AddCacheEntry(r.RequestURI, entry)
@@ -291,7 +286,7 @@ func ParseHTML(resp []byte) {
 			switch fetchedToken.Data {
 			case LINK_TAG:
 				for _, a := range fetchedToken.Attr {
-					if a.Key == "href" && strings.HasPrefix(a.Val, "http:") {
+					if a.Key == "href" && strings.HasPrefix(a.Val, "http") {
 						PrintLine("287")
 						RequestResource(a)
 						PrintLine("289")
@@ -299,7 +294,7 @@ func ParseHTML(resp []byte) {
 				}
 			case IMG_TAG:
 				for _, a := range fetchedToken.Attr {
-					if a.Key == "src" && strings.HasPrefix(a.Val, "http:") {
+					if a.Key == "src" && strings.HasPrefix(a.Val, "http") {
 						PrintLine("293")
 						RequestResource(a)
 						PrintLine("297")
@@ -307,8 +302,9 @@ func ParseHTML(resp []byte) {
 				}
 			case SCRIPT_TAG:
 				for _, a := range fetchedToken.Attr {
-					if a.Key == "src" && strings.HasPrefix(a.Val, "http:") {
-						fmt.Println("Start all attribute: ", a.Val)
+
+					if a.Key == "src" && strings.HasPrefix(a.Val, "http") {
+						fmt.Println("Start all attribute: ", Encrypt(a.Val))
 						PrintLine("301")
 						RequestResource(a)
 						PrintLine("307")
@@ -361,7 +357,8 @@ func GetFromDiskUrl(url string) (CacheEntry, bool) {
 	return GetFromDiskHash(hashkey)
 }
 
-func GetByHash(hashkey string) (CacheEntry, bool) {
+// hostname: http://example.com
+func GetByHash(hostname, hashkey string) (CacheEntry, bool) {
 	CacheMutex.Lock()
 
 	entry, exist := MemoryCache[hashkey]
@@ -609,6 +606,14 @@ func DebugPrint(title string, msg string) {
 
 func PrintLine(line string) {
 	// fmt.Println("On Line " + line)
+}
+
+func PrintMemoryCache() {
+	for key, _ := range MemoryCache {
+		fmt.Println("========= Cache ============")
+		fmt.Println("key: " + key)
+		fmt.Println("=========================")
+	}
 }
 
 func NewRequest(w http.ResponseWriter, r *http.Request) *http.Response {
