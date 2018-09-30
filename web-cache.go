@@ -52,7 +52,7 @@ func main() {
 	options = UserOptions{
 		EvictPolicy:    "LFU",
 		CacheSize:      200,
-		ExpirationTime: time.Duration(10) * time.Second}
+		ExpirationTime: time.Duration(30) * time.Second}
 
 	// IpPort := os.Args[1] // send and receive data from Firefox
 	// ReplacementPolicy := os.Args[2] // LFU or LRU or ELEPHANT
@@ -88,12 +88,17 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		// Cache <- Response
 		entry, existInCache := GetByURL(r.RequestURI)
-
+		if existInCache {
+			//fmt.Println("Found ", r.RequestURI)
+		}
 		if !existInCache {
 			hashArr := strings.Split(r.RequestURI, "/")
 			if len(hashArr) > 3 {
 				hash := hashArr[3]
 				entry, existInCache = GetByHash(hash)
+			}
+			if existInCache {
+				//fmt.Println("Found ", r.RequestURI)
 			}
 		}
 
@@ -122,11 +127,23 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			// Create New Cache Entry
 			data, err := ioutil.ReadAll(resp.Body)
 			if err != nil {
-				fmt.Println("Something wrong while parsing data")
+				fmt.Println("Something wrong while reading body")
 			}
+			newEntry := NewCacheEntry(data)
+			newEntry.RawData = data
+			//fmt.Println(string(data))
+			newEntry.Header = http.Header{}
+			for name, values := range resp.Header {
+				for _, v := range values {
+					newEntry.Header.Add(name, v)
+				}
+			}
+			AddCacheEntry(r.RequestURI, newEntry) // save original html
+
 			if strings.Contains(http.DetectContentType(data), "text/html") {
 				newEntry := NewCacheEntry(data)
 				newEntry.RawData = data
+				//fmt.Println(string(data))
 				newEntry.Header = http.Header{}
 				for name, values := range resp.Header {
 					for _, v := range values {
@@ -136,12 +153,16 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				PrintLine("129")
 				AddCacheEntry(r.RequestURI, newEntry) // save original html
 				PrintLine("131")
+
 				ParseHTML(data) // grab resources
 				PrintLine("133")
 				entry = parseHTMLFromFile(r.RequestURI) // modify html
 				PrintLine("135")
 				AddCacheEntry(r.RequestURI, entry)
 				PrintLine("137")
+			} else {
+				//fmt.Println("Other stuff ", r.RequestURI, Encrypt(r.RequestURI))
+				entry = newEntry
 			}
 
 			resp.Body.Close()
@@ -293,11 +314,12 @@ func ParseHTML(resp []byte) {
 			//fmt.Println("NOT ERROR")
 			fetchedToken := cursor.Token()
 			PrintLine("283")
+			//fmt.Println(fetchedToken.Data, fetchedToken.Attr)
 			switch fetchedToken.Data {
 			case LINK_TAG:
 				for _, a := range fetchedToken.Attr {
 					if a.Key == "href" && strings.HasPrefix(a.Val, "http") {
-						fmt.Println("Loading link: ", Encrypt(a.Val))
+						//fmt.Println("Loading link: ", Encrypt(a.Val))
 						PrintLine("287")
 						RequestResource(a)
 						PrintLine("289")
@@ -306,7 +328,7 @@ func ParseHTML(resp []byte) {
 			case IMG_TAG:
 				for _, a := range fetchedToken.Attr {
 					if a.Key == "src" && strings.HasPrefix(a.Val, "http") {
-						fmt.Println("Loading image: ", Encrypt(a.Val))
+						//fmt.Println("Loading image: ", Encrypt(a.Val))
 						PrintLine("293")
 						RequestResource(a)
 						PrintLine("297")
@@ -316,7 +338,7 @@ func ParseHTML(resp []byte) {
 				for _, a := range fetchedToken.Attr {
 
 					if a.Key == "src" && strings.HasPrefix(a.Val, "http") {
-						fmt.Println("Loading script: ", Encrypt(a.Val))
+						//fmt.Println("Loading script: ", Encrypt(a.Val))
 						PrintLine("301")
 						RequestResource(a)
 						PrintLine("307")
