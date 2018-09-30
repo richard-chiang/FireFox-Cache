@@ -84,7 +84,7 @@ func main() {
 
 func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-
+	//fmt.Println("Request", r.URL)
 	if r.Method == "GET" {
 		// Cache <- Response
 		entry, existInCache := GetByURL(r.RequestURI)
@@ -127,7 +127,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				AddCacheEntry(r.RequestURI, newEntry)
-				ParseHTML(resp)
+				ParseHTML(data)
 				entry = parseHTMLFromFile(r.RequestURI)
 				AddCacheEntry(r.RequestURI, entry)
 			}
@@ -141,7 +141,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		w.WriteHeader(200)
-
+		//fmt.Printf("Writing response %d bytes \n",len(entry.RawData))
 		_, err := io.Copy(w, bytes.NewReader(entry.RawData))
 
 		CheckError("io copy", err)
@@ -236,41 +236,46 @@ func ParseElementChangeList(tagData string, keyword string, content string) []st
 	return returnChangeList
 }
 
-func ParseHTML(resp *http.Response) {
+func ParseHTML(resp []byte) {
 	const LINK_TAG = "link"
 	const IMG_TAG = "img"
 	const SCRIPT_TAG = "script"
-
-	cursor := html.NewTokenizer(resp.Body)
-
+	cursor := html.NewTokenizer(bytes.NewReader(resp))
 	for {
 		token := cursor.Next()
 		switch token {
 		case html.ErrorToken:
-			fmt.Println()
+			fmt.Println("GOT ERROR")
 			return
 		case html.StartTagToken:
+			//fmt.Println("NOT ERROR")
 			fetchedToken := cursor.Token()
 			switch fetchedToken.Data {
 			case LINK_TAG:
 				for _, a := range fetchedToken.Attr {
-					if a.Key == "href" {
+					if a.Key == "href" && strings.HasPrefix(a.Val, "http:") {
 						RequestResource(a)
 					}
 				}
 			case IMG_TAG:
 				for _, a := range fetchedToken.Attr {
-					if a.Key == "src" {
+					if a.Key == "src" && strings.HasPrefix(a.Val, "http:"){
 						RequestResource(a)
 					}
 				}
 			case SCRIPT_TAG:
-				for _, a := range fetchedToken.Attr {
-					if a.Key == "src" {
+				for _, a := range fetchedToken.Attr  {
+					fmt.Println("Start key, value", a.Key, a.Val)
+					if a.Key == "src" && strings.HasPrefix(a.Val, "http:"){
+						fmt.Println("Start all attribute: ", a.Val)
 						RequestResource(a)
 					}
 				}
 			}
+//		case html.EndTagToken:
+//			fetchedToken := cursor.Token()
+//			fmt.Println("End  data: ", fetchedToken.Data)
+//			fmt.Println("End attribute: ", fetchedToken.Attr)
 		}
 	}
 }
@@ -338,6 +343,7 @@ func GetByURL(url string) (CacheEntry, bool) {
 
 // Fetch the img/link/script from the url provided in an html
 func RequestResource(a html.Attribute) {
+	fmt.Println("Requesting ", a.Key, a.Val)
 	resp, err := http.Get(a.Val)
 	fmt.Println("url: " + a.Val)
 	if err != nil {
