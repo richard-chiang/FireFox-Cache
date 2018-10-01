@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -355,17 +354,13 @@ func WriteToDisk(fileHash string, entry *CacheEntry) {
 	if FolderHasExceedCache(int64(len(bytes))) {
 		EvictForFile(int64(len(bytes)))
 	}
-	fmt.Println("Writing to disk")
+
 	writer := bufio.NewWriter(file)
 	n, err := writer.Write(bytes)
 
 	writer.Flush()
 	writer.Reset(writer)
 	os.Truncate(filePath, int64(n))
-	currentSize, err := DirectorySize(CacheFolderPath)
-	ExceedMaxCache(currentSize)
-	fmt.Println("Finished checking if ok")
-
 }
 
 func RestoreCache() {
@@ -528,7 +523,6 @@ func DirectorySize(path string) (int64, error) {
 		return err
 	})
 
-	fmt.Println("current cache folder size: " + strconv.FormatInt(size, 10))
 	return size, err
 }
 
@@ -542,11 +536,6 @@ func FolderHasExceedCache(fileSize int64) bool {
 func ExceedMaxCache(size int64) bool {
 	MBToBytes := 1048576
 	r := size > options.CacheSize*int64(MBToBytes)
-	if r {
-		fmt.Println("exceed")
-	} else {
-		fmt.Println("safe")
-	}
 	return r
 }
 
