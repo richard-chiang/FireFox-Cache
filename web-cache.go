@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,6 +35,7 @@ type CacheEntry struct {
 	Header     http.Header
 	CreateTime time.Time
 	LastAccess time.Time
+	SizeInByte int64
 }
 
 type UserOptions struct {
@@ -141,25 +143,10 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			AddCacheEntry(r.RequestURI, newEntry) // save original html
 
 			if strings.Contains(http.DetectContentType(data), "text/html") {
-				newEntry := NewCacheEntry(data)
-				newEntry.RawData = data
-				//fmt.Println(string(data))
-				newEntry.Header = http.Header{}
-				for name, values := range resp.Header {
-					for _, v := range values {
-						newEntry.Header.Add(name, v)
-					}
-				}
-				PrintLine("129")
-				AddCacheEntry(r.RequestURI, newEntry) // save original html
-				PrintLine("131")
-
-				ParseHTML(data) // grab resources
-				PrintLine("133")
+				ParseHTML(data)                         // grab resources
 				entry = parseHTMLFromFile(r.RequestURI) // modify html
-				PrintLine("135")
+
 				AddCacheEntry(r.RequestURI, entry)
-				PrintLine("137")
 			} else {
 				//fmt.Println("Other stuff ", r.RequestURI, Encrypt(r.RequestURI))
 				entry = newEntry
@@ -188,68 +175,46 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 
 func ForwardResponseToFireFox(w http.ResponseWriter, resp *http.Response) {
 	// forward response to firefox
-	PrintLine("158")
-
+	defer resp.Body.Close()
 	if resp == nil {
 		return
 	}
 
-	defer resp.Body.Close()
-
 	for name, values := range resp.Header {
-		for _, v := range values {
-			w.Header().Add(name, v)
-		}
+		w.Header()[name] = values
 	}
 	w.WriteHeader(resp.StatusCode)
 
 	_, err := io.Copy(w, resp.Body)
 	if err != nil {
 		http.Error(w, "Internal Server Error", 500)
-		DebugPrint("io.Copy error", "Issue with")
-		panic(err)
+		DebugPrint("io.Copy error", "Issue with i.Copy in ForwardResponse")
 	}
 }
 
 func parseHTMLFromFile(url string) CacheEntry {
-	PrintLine("181")
 	entry := ReadFromDisk(Encrypt(url))
-	PrintLine("189")
 	buf := entry.RawData
 	///////// Modify html byte[]
 	pageContent := string(buf)
-	PrintLine("189")
 
-	///https://vignette.wikia.nocookie.net/9e52ce83-d22f-42e1-8a35-2923b2b88690/scale-to-width-down/30
 	imgChangeList := ParseElementChangeList("img", "src", pageContent)
 	linkChangeList := ParseElementChangeList("link", "href", pageContent)
 	jsChangeList := ParseElementChangeList("script", "src", pageContent)
-	printList(jsChangeList)
-	fmt.Println(pageContent)
 	finalChangeList := append(imgChangeList, linkChangeList...)
 	finalChangeList = append(finalChangeList, jsChangeList...)
-	PrintLine("196")
 
 	replacer := strings.NewReplacer(finalChangeList...)
 	pageWithEncryptedLink := replacer.Replace(pageContent)
 	newBuf := []byte(pageWithEncryptedLink)
 	entry.RawData = newBuf
-	PrintLine("201")
 	return entry
-}
-
-// temperory function: just for testing if a link can be found
-func printList(data []string) {
-	for _, v := range data {
-		fmt.Println(v)
-	}
 }
 
 // example
 // tagData = "img"
 // keyword = "src"
 func ParseElementChangeList(tagData string, keyword string, content string) (returnChangeList []string) {
-	PrintLine("218")
 	regexString := `<` + tagData + `[^>]+\b` + keyword + `=["']([^"']+)["'][^>]*>`
 	re := regexp.MustCompile(regexString)
 	data := re.FindAllStringSubmatch(content, -1)
@@ -270,48 +235,37 @@ func ParseElementChangeList(tagData string, keyword string, content string) (ret
 }
 
 func ParseHTML(resp []byte) {
-	PrintLine("267")
 	const LINK_TAG = "link"
 	const IMG_TAG = "img"
 	const SCRIPT_TAG = "script"
-	PrintLine("271")
 	cursor := html.NewTokenizer(bytes.NewReader(resp))
 	for {
-		PrintLine("274")
 		token := cursor.Next()
 		switch token {
 		case html.ErrorToken:
-			PrintLine("278")
 			return
 		case html.StartTagToken:
 			//fmt.Println("NOT ERROR")
 			fetchedToken := cursor.Token()
-			PrintLine("283")
 			//fmt.Println(fetchedToken.Data, fetchedToken.Attr)
 			switch fetchedToken.Data {
 			case LINK_TAG:
 				for _, a := range fetchedToken.Attr {
 					if a.Key == "href" && strings.HasPrefix(a.Val, "http") {
-						PrintLine("287")
 						RequestResource(a)
-						PrintLine("289")
 					}
 				}
 			case IMG_TAG:
 				for _, a := range fetchedToken.Attr {
 					if a.Key == "src" && strings.HasPrefix(a.Val, "http") {
-						PrintLine("293")
 						RequestResource(a)
-						PrintLine("297")
 					}
 				}
 			case SCRIPT_TAG:
 				for _, a := range fetchedToken.Attr {
 
 					if a.Key == "src" && strings.HasPrefix(a.Val, "http") {
-						PrintLine("301")
 						RequestResource(a)
-						PrintLine("307")
 					}
 				}
 			}
@@ -346,9 +300,7 @@ func GetFromDiskHash(hashkey string) (CacheEntry, bool) {
 		if fileName == hashkey {
 			// Delete from memory if the cache is too big
 			MemoryCache[fileName] = ReadFromDisk(fileName)
-			for len(MemoryCache) >= options.CacheSize {
-				Evict()
-			}
+			Evict()
 			return MemoryCache[fileName], true
 		}
 	}
@@ -387,22 +339,17 @@ func GetByURL(url string) (CacheEntry, bool) {
 
 // Fetch the img/link/script from the url provided in an html
 func RequestResource(a html.Attribute) {
-	PrintLine("376")
 	resp, err := http.Get(a.Val)
 	if err != nil {
 		time.Sleep(time.Second)
 		resp, err = http.Get(a.Val)
 	}
 	CheckError("request resource: get request", err)
-	PrintLine("383")
 	bytes, err := ioutil.ReadAll(resp.Body)
-	PrintLine("385")
 	CheckError("request resource: readall", err)
 	entry := NewCacheEntry(bytes)
-	PrintLine("388")
 	entry.RawData = bytes
 	AddCacheEntry(a.Val, entry)
-	PrintLine("391")
 }
 
 // Fill in RawData
@@ -417,21 +364,12 @@ func NewCacheEntry(data []byte) CacheEntry {
 
 // Atomic adding to the cache
 func AddCacheEntry(URL string, entry CacheEntry) {
-	PrintLine("413")
 	CacheMutex.Lock()
-	PrintLine("415")
-	for len(MemoryCache) >= options.CacheSize {
-		Evict()
-	}
-	PrintLine("419")
+	Evict()
 	fileName := Encrypt(URL)
-	PrintLine("421")
 	MemoryCache[fileName] = entry
-	PrintLine("423")
 	WriteToDisk(fileName, entry)
-	PrintLine("425")
 	CacheMutex.Unlock()
-	PrintLine("427")
 }
 
 func WriteToDisk(fileHash string, entry CacheEntry) {
@@ -521,7 +459,6 @@ func DeleteEntryElephant(hashkey string) {
 
 func Evict() {
 	EvictExpired()
-	PrintLine("518")
 	if len(MemoryCache) >= options.CacheSize {
 		var KeyToEvict string
 		if options.EvictPolicy == "LRU" {
@@ -531,12 +468,10 @@ func Evict() {
 		} else {
 			KeyToEvict = EvictLRU()
 			DeleteEntryElephant(KeyToEvict)
-			PrintLine("528")
 			return
 		}
 		DeleteCacheEntry(KeyToEvict)
 	}
-	PrintLine("533")
 }
 
 func EvictLRU() string {
@@ -552,17 +487,14 @@ func EvictLRU() string {
 }
 
 func EvictLFU() string {
-	PrintLine("549")
 	var mostFrequentNumber uint64
 	bestKey := ""
-	PrintLine("552")
 	for key, cacheEntry := range MemoryCache {
 		if cacheEntry.UseFreq > mostFrequentNumber {
 			bestKey = key
 			mostFrequentNumber = cacheEntry.UseFreq
 		}
 	}
-	PrintLine("559")
 	return bestKey
 }
 
@@ -582,6 +514,25 @@ func isExpired(hash string) bool {
 	} else {
 		return false
 	}
+}
+
+func DirectorySize(path string) (int64, error) {
+	var size int64
+	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			size += info.Size()
+		}
+		return err
+	})
+	return size, err
+}
+
+// check if folder will exceed set cache size after adding the new file
+func FolderHasExceedCache(fileSize int64) bool {
+	currentSize, err := DirectorySize(CacheFolderPath)
+	CheckError("Issue with fetching cache folder size", err)
+	fmt.Println("cache size: " + strconv.FormatInt(currentSize, 10))
+	return false
 }
 
 // ===========================================================
@@ -606,10 +557,6 @@ func DebugPrint(title string, msg string) {
 	fmt.Println("============ " + title + " ===============")
 	fmt.Println(msg)
 	fmt.Println("---------------------------------------")
-}
-
-func PrintLine(line string) {
-	// fmt.Println("On Line " + line)
 }
 
 func PrintMemoryCache() {
