@@ -13,8 +13,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -53,7 +51,7 @@ const CacheFolderPath string = "./cache/"
 func main() {
 	options = UserOptions{
 		EvictPolicy:    "LFU",
-		CacheSize:      200,
+		CacheSize:      10,
 		ExpirationTime: time.Duration(30) * time.Second}
 
 	// IpPort := os.Args[1] // send and receive data from Firefox
@@ -121,37 +119,32 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				ForwardResponseToFireFox(w, resp)
 				return
 			}
-			CacheControl := resp.Header.Get("Cache-Control")
-			if CacheControl == "no-cache" {
-				ForwardResponseToFireFox(w, resp)
-				return
-			}
-			// Create New Cache Entry
+			//CacheControl := resp.Header.Get("Cache-Control")
+			//if CacheControl == "no-cache" {
+			//	ForwardResponseToFireFox(w, resp)
+			//	return
+			//}
+
 			data, err := ioutil.ReadAll(resp.Body)
 			if err != nil {
 				fmt.Println("Something wrong while reading body")
 			}
 			newEntry := NewCacheEntry(data)
 			newEntry.RawData = data
-			//fmt.Println(string(data))
 			newEntry.Header = http.Header{}
 			for name, values := range resp.Header {
 				for _, v := range values {
 					newEntry.Header.Add(name, v)
 				}
 			}
-			AddCacheEntry(r.RequestURI, newEntry) // save original html
 
 			if strings.Contains(http.DetectContentType(data), "text/html") {
-				ParseHTML(data)                         // grab resources
-				entry = parseHTMLFromFile(r.RequestURI) // modify html
-
-				AddCacheEntry(r.RequestURI, entry)
-			} else {
-				//fmt.Println("Other stuff ", r.RequestURI, Encrypt(r.RequestURI))
-				entry = newEntry
+				urlsToReplace := ParseHTML(data) // grab resources
+				newHTML := WriteHTML(data, urlsToReplace) // modify html
+				newEntry.RawData = []byte(newHTML)
 			}
-
+			entry = newEntry
+			AddCacheEntry(r.RequestURI, newEntry) // save original html
 			resp.Body.Close()
 		}
 
@@ -160,7 +153,6 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				w.Header().Add(name, v)
 			}
 		}
-		w.WriteHeader(200)
 		//fmt.Printf("Writing response %d bytes \n",len(entry.RawData))
 		_, err := io.Copy(w, bytes.NewReader(entry.RawData))
 
@@ -170,7 +162,6 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		resp := NewRequest(w, r)
 		ForwardResponseToFireFox(w, resp)
 	}
-
 }
 
 func ForwardResponseToFireFox(w http.ResponseWriter, resp *http.Response) {
@@ -184,7 +175,6 @@ func ForwardResponseToFireFox(w http.ResponseWriter, resp *http.Response) {
 		w.Header()[name] = values
 	}
 	w.WriteHeader(resp.StatusCode)
-
 	_, err := io.Copy(w, resp.Body)
 	if err != nil {
 		http.Error(w, "Internal Server Error", 500)
@@ -192,58 +182,32 @@ func ForwardResponseToFireFox(w http.ResponseWriter, resp *http.Response) {
 	}
 }
 
-func parseHTMLFromFile(url string) CacheEntry {
-	entry := ReadFromDisk(Encrypt(url))
-	buf := entry.RawData
-	///////// Modify html byte[]
-	pageContent := string(buf)
+func WriteHTML(data []byte, urlsToReplace []string) string {
+	htmlString := string(data)
 
-	imgChangeList := ParseElementChangeList("img", "src", pageContent)
-	linkChangeList := ParseElementChangeList("link", "href", pageContent)
-	jsChangeList := ParseElementChangeList("script", "src", pageContent)
-	finalChangeList := append(imgChangeList, linkChangeList...)
-	finalChangeList = append(finalChangeList, jsChangeList...)
-
-	replacer := strings.NewReplacer(finalChangeList...)
-	pageWithEncryptedLink := replacer.Replace(pageContent)
-	newBuf := []byte(pageWithEncryptedLink)
-	entry.RawData = newBuf
-	return entry
+	for _, url := range urlsToReplace {
+		htmlString = strings.Replace(htmlString, url, Encrypt(url), -1)
+	}
+	return htmlString
 }
 
 // example
 // tagData = "img"
 // keyword = "src"
-func ParseElementChangeList(tagData string, keyword string, content string) (returnChangeList []string) {
-	regexString := `<` + tagData + `[^>]+\b` + keyword + `=["']([^"']+)["'][^>]*>`
-	re := regexp.MustCompile(regexString)
-	data := re.FindAllStringSubmatch(content, -1)
 
-	for i := range data {
-		urlString := data[i][1]
-		tagString := data[i][0]
-
-		if strings.HasPrefix(urlString, "http") {
-			newURLString := Encrypt(urlString)
-			newTagString := strings.Replace(tagString, urlString, newURLString, -1)
-			returnChangeList = append(returnChangeList, tagString)
-			returnChangeList = append(returnChangeList, newTagString)
-		}
-	}
-
-	return
-}
-
-func ParseHTML(resp []byte) {
+func ParseHTML(resp []byte) []string {
+	PrintLine("267")
 	const LINK_TAG = "link"
 	const IMG_TAG = "img"
 	const SCRIPT_TAG = "script"
 	cursor := html.NewTokenizer(bytes.NewReader(resp))
+	var urlsToReplace []string
+
 	for {
 		token := cursor.Next()
 		switch token {
 		case html.ErrorToken:
-			return
+			return urlsToReplace
 		case html.StartTagToken:
 			//fmt.Println("NOT ERROR")
 			fetchedToken := cursor.Token()
@@ -252,12 +216,14 @@ func ParseHTML(resp []byte) {
 			case LINK_TAG:
 				for _, a := range fetchedToken.Attr {
 					if a.Key == "href" && strings.HasPrefix(a.Val, "http") {
+						urlsToReplace = append(urlsToReplace, a.Val)
 						RequestResource(a)
 					}
 				}
 			case IMG_TAG:
 				for _, a := range fetchedToken.Attr {
 					if a.Key == "src" && strings.HasPrefix(a.Val, "http") {
+						urlsToReplace = append(urlsToReplace, a.Val)
 						RequestResource(a)
 					}
 				}
@@ -265,14 +231,11 @@ func ParseHTML(resp []byte) {
 				for _, a := range fetchedToken.Attr {
 
 					if a.Key == "src" && strings.HasPrefix(a.Val, "http") {
+						urlsToReplace = append(urlsToReplace, a.Val)
 						RequestResource(a)
 					}
 				}
 			}
-			//		case html.EndTagToken:
-			//			fetchedToken := cursor.Token()
-			//			fmt.Println("End  data: ", fetchedToken.Data)
-			//			fmt.Println("End attribute: ", fetchedToken.Attr)
 		}
 	}
 }
