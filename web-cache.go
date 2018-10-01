@@ -337,8 +337,6 @@ func AddCacheEntry(URL string, entry CacheEntry) {
 }
 
 func WriteToDisk(fileHash string, entry *CacheEntry) {
-	WriteDiskMutex.Lock()
-	defer WriteDiskMutex.Unlock()
 	bytes, err := json.Marshal(entry)
 	CheckError("json marshal error", err)
 	filePath := CacheFolderPath + fileHash
@@ -352,19 +350,22 @@ func WriteToDisk(fileHash string, entry *CacheEntry) {
 		file, err = os.OpenFile(filePath, os.O_WRONLY, 0666)
 		CheckError("open existing file error", err)
 	}
-
 	defer file.Close()
+	CheckError("warning with write", err)
+	if FolderHasExceedCache(int64(len(bytes))) {
+		EvictForFile(int64(len(bytes)))
+	}
+	fmt.Println("Writing to disk")
 	writer := bufio.NewWriter(file)
 	n, err := writer.Write(bytes)
-	CheckError("warning with write", err)
-
-	if FolderHasExceedCache(int64(n)) {
-		EvictForFile(int64(n))
-	}
 
 	writer.Flush()
 	writer.Reset(writer)
 	os.Truncate(filePath, int64(n))
+	currentSize, err := DirectorySize(CacheFolderPath)
+	ExceedMaxCache(currentSize)
+	fmt.Println("Finished checking if ok")
+
 }
 
 func RestoreCache() {
@@ -539,7 +540,7 @@ func FolderHasExceedCache(fileSize int64) bool {
 }
 
 func ExceedMaxCache(size int64) bool {
-	MBToBytes := 1000000
+	MBToBytes := 1048576
 	r := size > options.CacheSize*int64(MBToBytes)
 	if r {
 		fmt.Println("exceed")
