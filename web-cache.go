@@ -106,12 +106,12 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				hash := hashArr[len(hashArr) - 1]
 				// Hash extrached, check the CacheMap
 				entry, existInCache = GetByHash(hash)
-				if existInCache {
+				if existInCache && !isExpired(entry) {
 					fmt.Println("Found the entry by its hash inside the our cache", hash, len(entry.RawData))
 				}
-				// If the entry is still not found, it could be that it was fetched before but expired. Use its hash to
-				// check if we saved the url for this hash
-				if !existInCache {
+				// If the entry is still not found, it could be that it was fetched before but expired. Or it could just
+				// expire before but still be stored. Use its hash to check if we saved the url for this hash
+				if !existInCache || isExpired(entry) {
 					CacheMutex.Lock()
 					storedUrlMap, ok := HashUrlMap[hash]
 					CacheMutex.Unlock()
@@ -120,6 +120,8 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 						storedUrl = storedUrlMap
 						foundTrueUrl = true
 					}
+					// If the entry was found on cache but expired, we need to refetch it later
+					existInCache = false
 				}
 			}
 		}
@@ -454,7 +456,7 @@ func RestoreCache() {
 		}
 		MemoryCache[fileName] = ReadFromDisk(fileName)
 	}
-	
+
 	Evict()
 }
 
@@ -563,9 +565,11 @@ func EvictLFU() string {
 	return bestKey
 }
 
-func isExpired(hash string) bool {
-	cache, _ := MemoryCache[hash]
-	elapsed := time.Since(cache.CreateTime)
+func isExpired(entry CacheEntry) bool {
+	CacheMutex.Lock()
+	defer CacheMutex.Unlock()
+
+	elapsed := time.Since(entry.CreateTime)
 	if elapsed > options.ExpirationTime {
 		return true
 	} else {
@@ -593,8 +597,8 @@ func FolderHasExceedCache(fileSize int64) bool {
 }
 
 func ExceedMaxCache(size int64) bool {
-	//MBToBytes := 1048576
-	MBToBytes := 300000
+	MBToBytes := 1048576
+	//MBToBytes := 300000
 
 	r := size > options.CacheSize*int64(MBToBytes)
 	return r
