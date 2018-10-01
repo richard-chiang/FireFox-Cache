@@ -85,51 +85,56 @@ func main() {
 
 func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	var url *url.URL
+	var storedUrl *url.URL
 	var foundTrueUrl bool
 	fmt.Println("GETTING REQUEST", r.URL)
-	//fmt.Println("Request", r.URL)
-	if r.Method == "GET" {
-		// Cache <- Response
 
+	// If not get, just forward the response to firefox
+	if r.Method == "GET" {
+
+
+		/**
+		 * Checking if the entry is inside the cache
+		 */
+		// Check if entry with given request URL is already cached
 		entry, existInCache := GetByURL(r.RequestURI)
 
 		if !existInCache {
+			// Extract the hash from the request URL, see if it matches the already stored entries
 			hashArr := strings.Split(r.RequestURI, "/")
 			if len(hashArr) > 3 {
 				hash := hashArr[len(hashArr) - 1]
-				//fmt.Println("THE HASH", hash)
+				// Hash extrached, check the CacheMap
 				entry, existInCache = GetByHash(hash)
 				if existInCache {
 					fmt.Println("Found the entry by its hash inside the our cache", hash, len(entry.RawData))
 				}
+				// If the entry is still not found, it could be that it was fetched before but expired. Use its hash to
+				// check if we saved the url for this hash
 				if !existInCache {
 					CacheMutex.Lock()
-					storedUrl, ok := HashUrlMap[hash]
+					storedUrlMap, ok := HashUrlMap[hash]
 					CacheMutex.Unlock()
 					if ok {
 						fmt.Println("Found the true url for the entry, fetched before but already evicted/expired ", storedUrl, hash)
-						url = storedUrl
+						storedUrl = storedUrlMap
 						foundTrueUrl = true
 					}
 				}
 			}
 		}
 
+		// For elephant, the entry could be just stored on disk
 		if !existInCache && options.EvictPolicy == "ELEPHANT" {
 			entry, existInCache = GetFromDiskUrl(r.RequestURI)
 		}
 
-		//if existInCache {
-		//	fmt.Println("FOUND ENTRY")
-		//}
-
 		if !existInCache {
 
 			if foundTrueUrl {
-				fmt.Println(url)
-				r.RequestURI = url.String()
-				fmt.Println("The entry was fetched before but evicted, fetching again ", url.String())
+				fmt.Println(storedUrl)
+				r.RequestURI = storedUrl.String()
+				fmt.Println("The entry was fetched before but evicted, fetching again ", storedUrl.String())
 			}
 
 			// call request to get data for caching
@@ -324,13 +329,8 @@ func GetByHash(hashkey string) (CacheEntry, bool) {
 
 	entry, exist := MemoryCache[hashkey]
 	if exist {
-		if isExpired(hashkey) {
-			DeleteCacheEntry(hashkey)
-			exist = false
-		} else {
-			entry.LastAccess = time.Now()
-			entry.UseFreq++
-		}
+		entry.LastAccess = time.Now()
+		entry.UseFreq++
 	}
 	CacheMutex.Unlock()
 
@@ -454,13 +454,7 @@ func RestoreCache() {
 		}
 		MemoryCache[fileName] = ReadFromDisk(fileName)
 	}
-
-	for key := range MemoryCache {
-		if isExpired(key) {
-			DeleteCacheEntry(key)
-		}
-	}
-
+	
 	Evict()
 }
 
@@ -500,8 +494,6 @@ func DeleteEntryElephant(hashkey string) {
 }
 
 func Evict() {
-	EvictExpired()
-
 	folderSize, err := DirectorySize(CacheFolderPath)
 	CheckError("err on reading directory size", err)
 	for ExceedMaxCache(folderSize) {
@@ -525,8 +517,6 @@ func Evict() {
 }
 
 func EvictForFile(size int64) {
-	//EvictExpired()
-
 	folderSize, err := DirectorySize(CacheFolderPath)
 	CheckError("err on reading directory size", err)
 	for ExceedMaxCache(folderSize + size) {
@@ -572,16 +562,6 @@ func EvictLFU() string {
 	}
 	return bestKey
 }
-
-/*
-func EvictExpired() {
-	for key := range MemoryCache {
-		if isExpired(key) {
-			DeleteCacheEntry(key)
-		}
-	}
-}
-*/
 
 func isExpired(hash string) bool {
 	cache, _ := MemoryCache[hash]
