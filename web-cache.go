@@ -52,7 +52,7 @@ const CacheFolderPath string = "./cache/"
 func main() {
 	options = UserOptions{
 		EvictPolicy:    "LFU",
-		CacheSize:      100,
+		CacheSize:      1,
 		ExpirationTime: time.Duration(500) * time.Second}
 
 	// IpPort := os.Args[1] // send and receive data from Firefox
@@ -101,12 +101,14 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				//fmt.Println("THE HASH", hash)
 				entry, existInCache = GetByHash(hash)
 				if existInCache {
-					fmt.Println("FOUND IN MAP", hash, len(entry.RawData))
+					fmt.Println("Found the entry by its hash inside the our cache", hash, len(entry.RawData))
 				}
 				if !existInCache {
+					CacheMutex.Lock()
 					storedUrl, ok := HashUrlMap[hash]
+					CacheMutex.Unlock()
 					if ok {
-						fmt.Println("FOUND IN MAP THO", storedUrl, hash)
+						fmt.Println("Found the true url for the entry, fetched before but already evicted/expired ", storedUrl, hash)
 						url = storedUrl
 						foundTrueUrl = true
 					}
@@ -127,7 +129,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			if foundTrueUrl {
 				fmt.Println(url)
 				r.RequestURI = url.String()
-				fmt.Println("REQUESTING THE FOUND ", url.String())
+				fmt.Println("The entry was fetched before but evicted, fetching again ", url.String())
 			}
 
 			// call request to get data for caching
@@ -138,12 +140,12 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if resp.StatusCode != 200 {
-				fmt.Println("RESP IS NOT 200 ", resp.StatusCode)
+				fmt.Println("Terminating, response is not 200 ", resp.StatusCode, r.RequestURI)
 				ForwardResponseToFireFox(w, resp)
 				return
 			}
 
-			fmt.Println("ok here", r.URL)
+			fmt.Println("Fetching the entry", r.URL)
 
 			//CacheControl := resp.Header.Get("Cache-Control")
 			//if CacheControl == "no-cache" {
@@ -523,7 +525,7 @@ func Evict() {
 }
 
 func EvictForFile(size int64) {
-	EvictExpired()
+	//EvictExpired()
 
 	folderSize, err := DirectorySize(CacheFolderPath)
 	CheckError("err on reading directory size", err)
@@ -571,6 +573,7 @@ func EvictLFU() string {
 	return bestKey
 }
 
+/*
 func EvictExpired() {
 	for key := range MemoryCache {
 		if isExpired(key) {
@@ -578,6 +581,7 @@ func EvictExpired() {
 		}
 	}
 }
+*/
 
 func isExpired(hash string) bool {
 	cache, _ := MemoryCache[hash]
@@ -609,8 +613,8 @@ func FolderHasExceedCache(fileSize int64) bool {
 }
 
 func ExceedMaxCache(size int64) bool {
-	MBToBytes := 1048576
-	//MBToBytes := 300000
+	//MBToBytes := 1048576
+	MBToBytes := 300000
 
 	r := size > options.CacheSize*int64(MBToBytes)
 	return r
