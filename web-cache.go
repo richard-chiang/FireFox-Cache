@@ -52,7 +52,7 @@ const CacheFolderPath string = "./cache/"
 func main() {
 	options = UserOptions{
 		EvictPolicy:    "LFU",
-		CacheSize:      10,
+		CacheSize:      1,
 		ExpirationTime: time.Duration(30) * time.Second}
 
 	// IpPort := os.Args[1] // send and receive data from Firefox
@@ -359,12 +359,9 @@ func WriteToDisk(fileHash string, entry *CacheEntry) {
 	CheckError("warning with write", err)
 
 	if FolderHasExceedCache(int64(n)) {
-		Evict()
+		EvictForFile(int64(n))
 	}
 
-	if FolderHasExceedCache(int64(n)) {
-		fmt.Println("shouldn't occur")
-	}
 	writer.Flush()
 	writer.Reset(writer)
 	os.Truncate(filePath, int64(n))
@@ -434,7 +431,32 @@ func Evict() {
 
 	folderSize, err := DirectorySize(CacheFolderPath)
 	CheckError("err on reading directory size", err)
-	if ExceedMaxCache(folderSize) {
+	for ExceedMaxCache(folderSize) {
+		var KeyToEvict string
+		if options.EvictPolicy == "LRU" {
+			KeyToEvict = EvictLRU()
+		} else if options.EvictPolicy == "LFU" {
+			KeyToEvict = EvictLFU()
+		} else {
+			KeyToEvict = EvictLRU()
+			DeleteEntryElephant(KeyToEvict)
+			return
+		}
+
+		if KeyToEvict == "" {
+			return
+		}
+
+		DeleteCacheEntry(KeyToEvict)
+	}
+}
+
+func EvictForFile(size int64) {
+	EvictExpired()
+
+	folderSize, err := DirectorySize(CacheFolderPath)
+	CheckError("err on reading directory size", err)
+	for ExceedMaxCache(folderSize + size) {
 		var KeyToEvict string
 		if options.EvictPolicy == "LRU" {
 			KeyToEvict = EvictLRU()
