@@ -97,7 +97,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		if !existInCache {
 			hashArr := strings.Split(r.RequestURI, "/")
 			if len(hashArr) > 3 {
-				hash := hashArr[3]
+				hash := hashArr[len(hashArr) - 1]
 				//fmt.Println("THE HASH", hash)
 				entry, existInCache = GetByHash(hash)
 				if existInCache {
