@@ -201,11 +201,10 @@ func parseHTMLFromFile(url string) CacheEntry {
 
 	///https://vignette.wikia.nocookie.net/9e52ce83-d22f-42e1-8a35-2923b2b88690/scale-to-width-down/30
 	imgChangeList := ParseElementChangeList("img", "src", pageContent)
-	fmt.Println(imgChangeList)
-
 	linkChangeList := ParseElementChangeList("link", "href", pageContent)
 	jsChangeList := ParseElementChangeList("script", "src", pageContent)
-
+	printList(jsChangeList)
+	fmt.Println(pageContent)
 	finalChangeList := append(imgChangeList, linkChangeList...)
 	finalChangeList = append(finalChangeList, jsChangeList...)
 	PrintLine("196")
@@ -219,12 +218,9 @@ func parseHTMLFromFile(url string) CacheEntry {
 }
 
 // temperory function: just for testing if a link can be found
-func testElementDetection(find, content string) {
-	re := regexp.MustCompile(find)
-
-	tags := re.FindAllString(content, -1)
-	for _, tag := range tags {
-		fmt.Println(tag)
+func printList(data []string) {
+	for _, v := range data {
+		fmt.Println(v)
 	}
 }
 
@@ -233,7 +229,7 @@ func testElementDetection(find, content string) {
 // keyword = "src"
 func ParseElementChangeList(tagData string, keyword string, content string) (returnChangeList []string) {
 	PrintLine("218")
-	regexString := `<` + tagData + `[^>]+\b` + keyword + `=["']([^"']+)["'][^>]+>`
+	regexString := `<` + tagData + `[^>]+\b` + keyword + `=["']([^"']+)["'][^>]*>`
 	re := regexp.MustCompile(regexString)
 	data := re.FindAllStringSubmatch(content, -1)
 
