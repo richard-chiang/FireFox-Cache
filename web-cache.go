@@ -11,9 +11,9 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -44,16 +44,16 @@ type UserOptions struct {
 
 var options UserOptions
 var CacheMutex *sync.Mutex
-var WriteDiskMutex *sync.Mutex
 var MemoryCache map[string]CacheEntry
+var HashUrlMap map[string]*url.URL
 
 const CacheFolderPath string = "./cache/"
 
 func main() {
 	options = UserOptions{
 		EvictPolicy:    "LFU",
-		CacheSize:      1,
-		ExpirationTime: time.Duration(30) * time.Second}
+		CacheSize:      100,
+		ExpirationTime: time.Duration(500) * time.Second}
 
 	// IpPort := os.Args[1] // send and receive data from Firefox
 	// ReplacementPolicy := os.Args[2] // LFU or LRU or ELEPHANT
@@ -77,30 +77,40 @@ func main() {
 	}
 
 	MemoryCache = map[string]CacheEntry{}
-	WriteDiskMutex = &sync.Mutex{}
+	HashUrlMap = map[string]*url.URL{}
 	CacheMutex = &sync.Mutex{}
 	RestoreCache()
 	log.Fatal(s.ListenAndServe())
-
 }
 
 func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
+	var url *url.URL
+	var foundTrueUrl bool
+	fmt.Println("GETTING REQUEST", r.URL)
 	//fmt.Println("Request", r.URL)
 	if r.Method == "GET" {
 		// Cache <- Response
+
 		entry, existInCache := GetByURL(r.RequestURI)
-		if existInCache {
-			//fmt.Println("Found ", r.RequestURI)
-		}
+
 		if !existInCache {
 			hashArr := strings.Split(r.RequestURI, "/")
 			if len(hashArr) > 3 {
 				hash := hashArr[3]
+				//fmt.Println("THE HASH", hash)
 				entry, existInCache = GetByHash(hash)
-			}
-			if existInCache {
-				//fmt.Println("Found ", r.RequestURI)
+				if existInCache {
+					fmt.Println("FOUND IN MAP", hash, len(entry.RawData))
+				}
+				if !existInCache {
+					storedUrl, ok := HashUrlMap[hash]
+					if ok {
+						fmt.Println("FOUND IN MAP THO", storedUrl, hash)
+						url = storedUrl
+						foundTrueUrl = true
+					}
+				}
 			}
 		}
 
@@ -108,7 +118,17 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			entry, existInCache = GetFromDiskUrl(r.RequestURI)
 		}
 
+		//if existInCache {
+		//	fmt.Println("FOUND ENTRY")
+		//}
+
 		if !existInCache {
+
+			if foundTrueUrl {
+				fmt.Println(url)
+				r.RequestURI = url.String()
+				fmt.Println("REQUESTING THE FOUND ", url.String())
+			}
 
 			// call request to get data for caching
 			resp := NewRequest(w, r)
@@ -118,9 +138,13 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if resp.StatusCode != 200 {
+				fmt.Println("RESP IS NOT 200 ", resp.StatusCode)
 				ForwardResponseToFireFox(w, resp)
 				return
 			}
+
+			fmt.Println("ok here", r.URL)
+
 			//CacheControl := resp.Header.Get("Cache-Control")
 			//if CacheControl == "no-cache" {
 			//	ForwardResponseToFireFox(w, resp)
@@ -134,6 +158,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			newEntry := NewCacheEntry(data)
 			newEntry.RawData = data
 			newEntry.Header = http.Header{}
+
 			for name, values := range resp.Header {
 				for _, v := range values {
 					newEntry.Header.Add(name, v)
@@ -145,6 +170,15 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				newHTML := WriteHTML(data, urlsToReplace) // modify html
 				newEntry.RawData = []byte(newHTML)
 			}
+
+			if !foundTrueUrl {
+				CacheMutex.Lock()
+				HashUrlMap[Encrypt(r.RequestURI)] = r.URL
+				CacheMutex.Unlock()
+				//fmt.Println("Adding new URL", r.URL.String())
+				//fmt.Println("Became", HashUrlMap)
+			}
+
 			entry = newEntry
 			AddCacheEntry(r.RequestURI, newEntry) // save original html
 			resp.Body.Close()
@@ -155,6 +189,8 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				w.Header().Add(name, v)
 			}
 		}
+
+		fmt.Println("Forwarding ", r.URL, len(entry.RawData))
 		//fmt.Printf("Writing response %d bytes \n",len(entry.RawData))
 		_, err := io.Copy(w, bytes.NewReader(entry.RawData))
 
@@ -174,9 +210,12 @@ func ForwardResponseToFireFox(w http.ResponseWriter, resp *http.Response) {
 	}
 
 	for name, values := range resp.Header {
-		w.Header()[name] = values
+		for _, v := range values {
+			w.Header().Add(name, v)
+		}
 	}
 	w.WriteHeader(resp.StatusCode)
+
 	_, err := io.Copy(w, resp.Body)
 	if err != nil {
 		http.Error(w, "Internal Server Error", 500)
@@ -216,14 +255,14 @@ func ParseHTML(resp []byte) []string {
 			switch fetchedToken.Data {
 			case LINK_TAG:
 				for _, a := range fetchedToken.Attr {
-					if a.Key == "href" && strings.HasPrefix(a.Val, "http") {
+					if a.Key == "href" && (strings.HasPrefix(a.Val, "http") || strings.HasPrefix(a.Val, "//")) {
 						urlsToReplace = append(urlsToReplace, a.Val)
 						RequestResource(a)
 					}
 				}
 			case IMG_TAG:
 				for _, a := range fetchedToken.Attr {
-					if a.Key == "src" && strings.HasPrefix(a.Val, "http") {
+					if a.Key == "src" && (strings.HasPrefix(a.Val, "http") || strings.HasPrefix(a.Val, "//")) {
 						urlsToReplace = append(urlsToReplace, a.Val)
 						RequestResource(a)
 					}
@@ -231,7 +270,7 @@ func ParseHTML(resp []byte) []string {
 			case SCRIPT_TAG:
 				for _, a := range fetchedToken.Attr {
 
-					if a.Key == "src" && strings.HasPrefix(a.Val, "http") {
+					if a.Key == "src" && (strings.HasPrefix(a.Val, "http") || strings.HasPrefix(a.Val, "//")) {
 						urlsToReplace = append(urlsToReplace, a.Val)
 						RequestResource(a)
 					}
@@ -303,17 +342,51 @@ func GetByURL(url string) (CacheEntry, bool) {
 
 // Fetch the img/link/script from the url provided in an html
 func RequestResource(a html.Attribute) {
-	resp, err := http.Get(a.Val)
-	if err != nil {
-		time.Sleep(time.Second)
+	var resp *http.Response
+	var err error
+	var newUrl *url.URL
+	if strings.HasPrefix(a.Val, "//") {
+		resp, err = http.Get("http:" + a.Val)
+		if err != nil {
+			time.Sleep(time.Second)
+			resp, err = http.Get(a.Val)
+		}
+		newUrl, err = url.ParseRequestURI("http:" + a.Val)
+
+	} else {
 		resp, err = http.Get(a.Val)
+		if err != nil {
+			time.Sleep(time.Second)
+			resp, err = http.Get(a.Val)
+		}
+		newUrl, err = url.ParseRequestURI(a.Val)
+
 	}
+	CheckError("request resource: stroring hash for new url", err)
+	CacheMutex.Lock()
+	fmt.Println("CREATED NEW URL ", newUrl, "FOR ", Encrypt(a.Val), "or " , Encrypt("http:" + a.Val))
+	HashUrlMap[Encrypt(a.Val)] = newUrl
+	CacheMutex.Unlock()
+	//fmt.Println("Adding new URL", newUrl.String())
+	//fmt.Println("Became", HashUrlMap)
 	CheckError("request resource: get request", err)
-	bytes, err := ioutil.ReadAll(resp.Body)
+	entryBytes, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
 	CheckError("request resource: readall", err)
-	entry := NewCacheEntry(bytes)
-	entry.RawData = bytes
+	entry := NewCacheEntry(entryBytes)
+	entry.RawData = entryBytes
+
+	entry.Header = http.Header{}
+
+	for name, values := range resp.Header {
+		for _, v := range values {
+			entry.Header.Add(name, v)
+		}
+	}
+
 	AddCacheEntry(a.Val, entry)
+
 }
 
 // Fill in RawData
@@ -355,7 +428,6 @@ func WriteToDisk(fileHash string, entry *CacheEntry) {
 	if FolderHasExceedCache(int64(len(bytes))) {
 		EvictForFile(int64(len(bytes)))
 	}
-	fmt.Println("Writing to disk")
 	writer := bufio.NewWriter(file)
 	n, err := writer.Write(bytes)
 
@@ -364,8 +436,6 @@ func WriteToDisk(fileHash string, entry *CacheEntry) {
 	os.Truncate(filePath, int64(n))
 	currentSize, err := DirectorySize(CacheFolderPath)
 	ExceedMaxCache(currentSize)
-	fmt.Println("Finished checking if ok")
-
 }
 
 func RestoreCache() {
@@ -528,7 +598,6 @@ func DirectorySize(path string) (int64, error) {
 		return err
 	})
 
-	fmt.Println("current cache folder size: " + strconv.FormatInt(size, 10))
 	return size, err
 }
 
@@ -541,12 +610,9 @@ func FolderHasExceedCache(fileSize int64) bool {
 
 func ExceedMaxCache(size int64) bool {
 	MBToBytes := 1048576
+	//MBToBytes := 300000
+
 	r := size > options.CacheSize*int64(MBToBytes)
-	if r {
-		fmt.Println("exceed")
-	} else {
-		fmt.Println("safe")
-	}
 	return r
 }
 
