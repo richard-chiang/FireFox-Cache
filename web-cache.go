@@ -35,17 +35,17 @@ type CacheEntry struct {
 	Header     http.Header
 	CreateTime time.Time
 	LastAccess time.Time
-	SizeInByte int64
 }
 
 type UserOptions struct {
 	EvictPolicy    string
-	CacheSize      int
+	CacheSize      int64
 	ExpirationTime time.Duration
 }
 
 var options UserOptions
 var CacheMutex *sync.Mutex
+var WriteDiskMutex *sync.Mutex
 var MemoryCache map[string]CacheEntry
 
 const CacheFolderPath string = "./cache/"
@@ -53,8 +53,8 @@ const CacheFolderPath string = "./cache/"
 func main() {
 	options = UserOptions{
 		EvictPolicy:    "LFU",
-		CacheSize:      200,
-		ExpirationTime: time.Duration(30) * time.Second}
+		CacheSize:      2,
+		ExpirationTime: time.Duration(300) * time.Second}
 
 	// IpPort := os.Args[1] // send and receive data from Firefox
 	// ReplacementPolicy := os.Args[2] // LFU or LRU or ELEPHANT
@@ -78,6 +78,7 @@ func main() {
 	}
 
 	MemoryCache = map[string]CacheEntry{}
+	WriteDiskMutex = &sync.Mutex{}
 	CacheMutex = &sync.Mutex{}
 	RestoreCache()
 	log.Fatal(s.ListenAndServe())
@@ -367,43 +368,45 @@ func AddCacheEntry(URL string, entry CacheEntry) {
 	CacheMutex.Lock()
 	Evict()
 	fileName := Encrypt(URL)
+	WriteToDisk(fileName, &entry)
 	MemoryCache[fileName] = entry
-	WriteToDisk(fileName, entry)
 	CacheMutex.Unlock()
 }
 
-func WriteToDisk(fileHash string, entry CacheEntry) {
+func WriteToDisk(fileHash string, entry *CacheEntry) {
+	WriteDiskMutex.Lock()
+	defer WriteDiskMutex.Unlock()
 	bytes, err := json.Marshal(entry)
 	CheckError("json marshal error", err)
 	filePath := CacheFolderPath + fileHash
+	var file *os.File
 
 	_, err = os.Stat(filePath)
 	if err != nil { // file does not exist, do create
-		file, err := os.Create(filePath)
+		file, err = os.Create(filePath)
 		CheckError("Create File Error", err)
-		defer file.Close()
-
-		writer := bufio.NewWriter(file)
-		writer.Write(bytes)
-		writer.Flush()
 	} else { // file exist, do write
-		file, err := os.OpenFile(filePath, os.O_WRONLY, 0666)
+		file, err = os.OpenFile(filePath, os.O_WRONLY, 0666)
 		CheckError("open existing file error", err)
-		defer file.Close()
-
-		bufferedWriter := bufio.NewWriter(file)
-		bytesWritten, err := bufferedWriter.Write(bytes)
-		if err != nil || bytesWritten != len(bytes) {
-			fmt.Println(err.Error())
-			fmt.Println("maybe not enough bytes written on file")
-			return
-		}
-
-		bufferedWriter.Flush()
-		bufferedWriter.Reset(bufferedWriter)
-		os.Truncate(filePath, int64(bytesWritten))
 	}
+
+	defer file.Close()
+	writer := bufio.NewWriter(file)
+	n, err := writer.Write(bytes)
+	CheckError("warning with write", err)
+
+	if FolderHasExceedCache(int64(n)) {
+		Evict()
+	}
+
+	if FolderHasExceedCache(int64(n)) {
+		fmt.Println("shouldn't occur")
+	}
+	writer.Flush()
+	writer.Reset(writer)
+	os.Truncate(filePath, int64(n))
 }
+
 func RestoreCache() {
 	CacheMutex.Lock()
 	defer CacheMutex.Unlock()
@@ -424,6 +427,8 @@ func RestoreCache() {
 			DeleteCacheEntry(key)
 		}
 	}
+
+	Evict()
 }
 
 func Encrypt(input string) string {
@@ -444,8 +449,12 @@ func ReadFromDisk(hash string) CacheEntry {
 }
 
 func DeleteFromDisk(fileHash string) {
+	if fileHash == "" {
+		fmt.Println("cannot remove file of empty string from cache folder")
+		return
+	}
 	err := os.Remove(CacheFolderPath + fileHash)
-	CheckError("remove file error", err)
+	CheckError("remove "+fileHash+" error", err)
 }
 
 func DeleteCacheEntry(hashkey string) {
@@ -459,7 +468,10 @@ func DeleteEntryElephant(hashkey string) {
 
 func Evict() {
 	EvictExpired()
-	if len(MemoryCache) >= options.CacheSize {
+
+	folderSize, err := DirectorySize(CacheFolderPath)
+	CheckError("err on reading directory size", err)
+	if ExceedMaxCache(folderSize) {
 		var KeyToEvict string
 		if options.EvictPolicy == "LRU" {
 			KeyToEvict = EvictLRU()
@@ -470,6 +482,11 @@ func Evict() {
 			DeleteEntryElephant(KeyToEvict)
 			return
 		}
+
+		if KeyToEvict == "" {
+			return
+		}
+
 		DeleteCacheEntry(KeyToEvict)
 	}
 }
@@ -524,6 +541,8 @@ func DirectorySize(path string) (int64, error) {
 		}
 		return err
 	})
+
+	fmt.Println("current cache folder size: " + strconv.FormatInt(size, 10))
 	return size, err
 }
 
@@ -531,8 +550,18 @@ func DirectorySize(path string) (int64, error) {
 func FolderHasExceedCache(fileSize int64) bool {
 	currentSize, err := DirectorySize(CacheFolderPath)
 	CheckError("Issue with fetching cache folder size", err)
-	fmt.Println("cache size: " + strconv.FormatInt(currentSize, 10))
-	return false
+	return ExceedMaxCache(currentSize + fileSize)
+}
+
+func ExceedMaxCache(size int64) bool {
+	MBToBytes := 1000000
+	r := size > options.CacheSize*int64(MBToBytes)
+	if r {
+		fmt.Println("exceed")
+	} else {
+		fmt.Println("safe")
+	}
+	return r
 }
 
 // ===========================================================
@@ -547,7 +576,7 @@ func CheckError(msg string, err error) {
 		fmt.Println("***********************************")
 		fmt.Println(msg)
 		fmt.Println("***********************************")
-		log.Fatal(err)
+		fmt.Println(err)
 		fmt.Println("***********************************")
 		fmt.Println("***********************************")
 	}
