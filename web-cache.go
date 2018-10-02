@@ -540,6 +540,7 @@ func Evict() {
 }
 
 func EvictForFile(size int64) {
+	fmt.Println("EVICT_FOR_FILE: Evicting for ", size, " bytes.")
 	folderSize, err := DirectorySize(CacheFolderPath)
 	CheckError("err on reading directory size", err)
 	for ExceedMaxCache(folderSize + size) {
@@ -558,6 +559,8 @@ func EvictForFile(size int64) {
 			return
 		}
 		DeleteCacheEntry(KeyToEvict)
+		folderSize, err = DirectorySize(CacheFolderPath)
+		CheckError("err on reading directory size", err)
 	}
 }
 
@@ -576,7 +579,7 @@ func EvictLRU() string {
 func EvictLFU() string {
 	var leastFrequentNumber uint64
 	leastFrequentNumber = math.MaxUint64
-	
+
 	bestKey := ""
 	for key, cacheEntry := range MemoryCache {
 		if cacheEntry.UseFreq < leastFrequentNumber {
@@ -621,6 +624,7 @@ func FolderHasExceedCache(fileSize int64) bool {
 func ExceedMaxCache(size int64) bool {
 	//MBToBytes := 1048576
 	MBToBytes := 110000
+	fmt.Printf("EXCEED_MAX_CACHE: Folder with new file is now %d bytes. %d bytes available overall. \n", size, options.CacheSize*int64(MBToBytes))
 	r := size > options.CacheSize*int64(MBToBytes)
 	return r
 }
