@@ -40,6 +40,7 @@ type UserOptions struct {
 	EvictPolicy    string
 	CacheSize      int64
 	ExpirationTime time.Duration
+	CacheControl   bool
 }
 
 var options UserOptions
@@ -50,15 +51,19 @@ var HashUrlMap map[string]*url.URL
 const CacheFolderPath string = "./cache/"
 
 func main() {
-	options = UserOptions{
-		EvictPolicy:    "LFU",
-		CacheSize:      100,
-		ExpirationTime: time.Duration(5) * time.Second}
-
 	// IpPort := os.Args[1] // send and receive data from Firefox
 	// ReplacementPolicy := os.Args[2] // LFU or LRU or ELEPHANT
 	// CacheSize := os.Args[3]
 	// ExpirationTime := os.Args[4] // time period in seconds after which an item in the cache is considered to be expired
+	// CacheControl := os.Args[5] // whether to use cache control or not
+
+	options = UserOptions{
+		EvictPolicy:    "LFU",
+		CacheSize:      1,
+		ExpirationTime: time.Duration(100) * time.Second,
+		CacheControl:   false,
+	}
+
 
 	IpPort := "localhost:1243"
 
@@ -84,8 +89,8 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	var foundTrueUrl bool
 	fmt.Println("Got request ", r.RequestURI, " ", r.URL)
 	// If not get, just forward the response to firefox
-	if r.Method == "GET" {
 
+	if r.Method == "GET" {
 		/**
 		 * Checking if the entry is inside the cache
 		 */
@@ -169,11 +174,16 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				CacheMutex.Unlock()
 			}
 
-			entry = newEntry
+			if existInCache && isExpired(entry) {
+				newEntry.UseFreq = entry.UseFreq + 1
+				fmt.Println(newEntry.UseFreq)
+			}
+
 			AddCacheEntry(r.RequestURI, newEntry) // save original html
+			entry = newEntry
 			resp.Body.Close()
 		}
-
+		fmt.Println(entry.UseFreq)
 		for name, values := range entry.Header {
 			for _, v := range values {
 				w.Header().Add(name, v)
@@ -314,6 +324,7 @@ func GetByHash(hashkey string) (CacheEntry, bool) {
 	if exist {
 		entry.LastAccess = time.Now()
 		entry.UseFreq++
+		MemoryCache[hashkey] = entry
 	}
 	CacheMutex.Unlock()
 
@@ -582,8 +593,8 @@ func FolderHasExceedCache(fileSize int64) bool {
 }
 
 func ExceedMaxCache(size int64) bool {
-	MBToBytes := 1048576
-	//MBToBytes := 10000
+	//MBToBytes := 1048576
+	MBToBytes := 720
 	r := size > options.CacheSize*int64(MBToBytes)
 	return r
 }
