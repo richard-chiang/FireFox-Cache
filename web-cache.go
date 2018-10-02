@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -178,7 +179,6 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				newEntry.RawData = []byte(newHTML)
 			}
 			newEntry.Header.Set("Content-Length", strconv.Itoa(len(newEntry.RawData)))
-			fmt.Println("Setting content length: ", strconv.Itoa(len(newEntry.RawData)))
 
 			if !foundTrueUrl {
 				CacheMutex.Lock()
@@ -195,7 +195,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			entry = newEntry
 			resp.Body.Close()
 		}
-		fmt.Println(entry.UseFreq)
+		fmt.Println("HANDLER_FOR_FIREFOX: Use frequency of ", r.RequestURI, " is ", entry.UseFreq)
 		for name, values := range entry.Header {
 			for _, v := range values {
 				w.Header().Add(name, v)
@@ -318,7 +318,6 @@ func GetFromDiskHash(hashkey string) (CacheEntry, bool) {
 			entry, err := ReadFromDisk(fileName)
 			CheckError("Error with elephant, ", err)
 			MemoryCache[fileName] = entry
-			Evict()
 			return MemoryCache[fileName], true
 		}
 	}
@@ -394,7 +393,6 @@ func RequestResource(a html.Attribute) {
 		}
 	}
 	entry.Header.Set("Content-Length", strconv.Itoa(len(entryBytes)))
-	fmt.Println("Setting content length: ", strconv.Itoa(len(entryBytes)))
 	AddCacheEntry(a.Val, entry)
 }
 
@@ -505,6 +503,7 @@ func DeleteFromDisk(fileHash string) {
 		return
 	}
 	err := os.Remove(CacheFolderPath + fileHash)
+	fmt.Println("DELETE_FROM_DISK: removing "+fileHash)
 	CheckError("DELETE_FROM_DISK: remove "+fileHash+" error", err)
 }
 
@@ -558,7 +557,6 @@ func EvictForFile(size int64) {
 		if KeyToEvict == "" {
 			return
 		}
-
 		DeleteCacheEntry(KeyToEvict)
 	}
 }
@@ -576,12 +574,14 @@ func EvictLRU() string {
 }
 
 func EvictLFU() string {
-	var mostFrequentNumber uint64
+	var leastFrequentNumber uint64
+	leastFrequentNumber = math.MaxUint64
+	
 	bestKey := ""
 	for key, cacheEntry := range MemoryCache {
-		if cacheEntry.UseFreq > mostFrequentNumber {
+		if cacheEntry.UseFreq < leastFrequentNumber {
 			bestKey = key
-			mostFrequentNumber = cacheEntry.UseFreq
+			leastFrequentNumber = cacheEntry.UseFreq
 		}
 	}
 	return bestKey
@@ -620,7 +620,7 @@ func FolderHasExceedCache(fileSize int64) bool {
 
 func ExceedMaxCache(size int64) bool {
 	//MBToBytes := 1048576
-	MBToBytes := 1550
+	MBToBytes := 110000
 	r := size > options.CacheSize*int64(MBToBytes)
 	return r
 }
