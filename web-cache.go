@@ -62,11 +62,6 @@ func main() {
 
 	IpPort := "localhost:1243"
 
-	// if !(EvictPolicy == "LRU") && !(EvictPolicy == "LFU") && !(EvictPolicy == "ELEPHANT") {
-	// 	fmt.Println("Please enter the proper evict policy: LFU or LRU only")
-	// 	os.Exit(1)
-	// }
-
 	s := &http.Server{
 		Addr: IpPort,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -87,11 +82,9 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	var storedUrl *url.URL
 	var foundTrueUrl bool
-	fmt.Println("GETTING REQUEST", r.URL)
 
 	// If not get, just forward the response to firefox
 	if r.Method == "GET" {
-
 
 		/**
 		 * Checking if the entry is inside the cache
@@ -103,7 +96,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			// Extract the hash from the request URL, see if it matches the already stored entries
 			hashArr := strings.Split(r.RequestURI, "/")
 			if len(hashArr) > 3 {
-				hash := hashArr[len(hashArr) - 1]
+				hash := hashArr[len(hashArr)-1]
 				// Hash extrached, check the CacheMap
 				entry, existInCache = GetByHash(hash)
 				if existInCache && !isExpired(entry) {
@@ -116,7 +109,6 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 					storedUrlMap, ok := HashUrlMap[hash]
 					CacheMutex.Unlock()
 					if ok {
-						fmt.Println("Found the true url for the entry, fetched before but already evicted/expired ", storedUrl, hash)
 						storedUrl = storedUrlMap
 						foundTrueUrl = true
 					}
@@ -134,9 +126,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		if !existInCache {
 
 			if foundTrueUrl {
-				fmt.Println(storedUrl)
 				r.RequestURI = storedUrl.String()
-				fmt.Println("The entry was fetched before but evicted, fetching again ", storedUrl.String())
 			}
 
 			// call request to get data for caching
@@ -147,18 +137,9 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if resp.StatusCode != 200 {
-				fmt.Println("Terminating, response is not 200 ", resp.StatusCode, r.RequestURI)
 				ForwardResponseToFireFox(w, resp)
 				return
 			}
-
-			fmt.Println("Fetching the entry", r.URL)
-
-			//CacheControl := resp.Header.Get("Cache-Control")
-			//if CacheControl == "no-cache" {
-			//	ForwardResponseToFireFox(w, resp)
-			//	return
-			//}
 
 			data, err := ioutil.ReadAll(resp.Body)
 			if err != nil {
@@ -185,8 +166,6 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				CacheMutex.Lock()
 				HashUrlMap[Encrypt(r.RequestURI)] = r.URL
 				CacheMutex.Unlock()
-				//fmt.Println("Adding new URL", r.URL.String())
-				//fmt.Println("Became", HashUrlMap)
 			}
 
 			entry = newEntry
@@ -199,9 +178,6 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				w.Header().Add(name, v)
 			}
 		}
-
-		fmt.Println("Forwarding ", r.URL, len(entry.RawData))
-		//fmt.Printf("Writing response %d bytes \n",len(entry.RawData))
 		_, err := io.Copy(w, bytes.NewReader(entry.RawData))
 
 		CheckError("io copy", err)
@@ -235,7 +211,7 @@ func ForwardResponseToFireFox(w http.ResponseWriter, resp *http.Response) {
 
 func WriteHTML(data []byte, urlsToReplace []string) string {
 	htmlString := string(data)
-
+	htmlString = html.UnescapeString(htmlString)
 	for _, url := range urlsToReplace {
 		htmlString = strings.Replace(htmlString, url, Encrypt(url), -1)
 	}
@@ -263,15 +239,17 @@ func ParseHTML(resp []byte) []string {
 			//fmt.Println(fetchedToken.Data, fetchedToken.Attr)
 			switch fetchedToken.Data {
 			case LINK_TAG:
+				fmt.Println(fetchedToken.String)
 				for _, a := range fetchedToken.Attr {
-					if a.Key == "href" && (strings.HasPrefix(a.Val, "http") || strings.HasPrefix(a.Val, "//")) {
+					if a.Key == "href" && ValidParseUrl(a.Val) {
 						urlsToReplace = append(urlsToReplace, a.Val)
 						RequestResource(a)
+						fmt.Println(a.Val)
 					}
 				}
 			case IMG_TAG:
 				for _, a := range fetchedToken.Attr {
-					if a.Key == "src" && (strings.HasPrefix(a.Val, "http") || strings.HasPrefix(a.Val, "//")) {
+					if a.Key == "src" && ValidParseUrl(a.Val) {
 						urlsToReplace = append(urlsToReplace, a.Val)
 						RequestResource(a)
 					}
@@ -279,7 +257,7 @@ func ParseHTML(resp []byte) []string {
 			case SCRIPT_TAG:
 				for _, a := range fetchedToken.Attr {
 
-					if a.Key == "src" && (strings.HasPrefix(a.Val, "http") || strings.HasPrefix(a.Val, "//")) {
+					if a.Key == "src" && ValidParseUrl(a.Val) {
 						urlsToReplace = append(urlsToReplace, a.Val)
 						RequestResource(a)
 					}
@@ -287,6 +265,10 @@ func ParseHTML(resp []byte) []string {
 			}
 		}
 	}
+}
+
+func ValidParseUrl(val string) bool {
+	return strings.HasPrefix(val, "http") || strings.HasPrefix(val, "//")
 }
 
 // ===========================================================
@@ -368,11 +350,9 @@ func RequestResource(a html.Attribute) {
 	}
 	CheckError("request resource: stroring hash for new url", err)
 	CacheMutex.Lock()
-	fmt.Println("CREATED NEW URL ", newUrl, "FOR ", Encrypt(a.Val), "or " , Encrypt("http:" + a.Val))
 	HashUrlMap[Encrypt(a.Val)] = newUrl
 	CacheMutex.Unlock()
-	//fmt.Println("Adding new URL", newUrl.String())
-	//fmt.Println("Became", HashUrlMap)
+
 	CheckError("request resource: get request", err)
 	entryBytes, err := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -438,8 +418,6 @@ func WriteToDisk(fileHash string, entry *CacheEntry) {
 	writer.Flush()
 	writer.Reset(writer)
 	os.Truncate(filePath, int64(n))
-	currentSize, err := DirectorySize(CacheFolderPath)
-	ExceedMaxCache(currentSize)
 }
 
 func RestoreCache() {
@@ -598,7 +576,6 @@ func FolderHasExceedCache(fileSize int64) bool {
 
 func ExceedMaxCache(size int64) bool {
 	MBToBytes := 1048576
-	//MBToBytes := 300000
 
 	r := size > options.CacheSize*int64(MBToBytes)
 	return r
