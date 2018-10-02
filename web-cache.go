@@ -52,7 +52,7 @@ const CacheFolderPath string = "./cache/"
 func main() {
 	options = UserOptions{
 		EvictPolicy:    "LFU",
-		CacheSize:      100,
+		CacheSize:      1,
 		ExpirationTime: time.Duration(500) * time.Second}
 
 	// IpPort := os.Args[1] // send and receive data from Firefox
@@ -80,28 +80,42 @@ func main() {
 
 func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	var url *url.URL
+	var storedUrl *url.URL
 	var foundTrueUrl bool
-	if r.Method == "GET" {
-		// Cache <- Response
 
+	// If not get, just forward the response to firefox
+	if r.Method == "GET" {
+
+		/**
+		 * Checking if the entry is inside the cache
+		 */
+		// Check if entry with given request URL is already cached
 		entry, existInCache := GetByURL(r.RequestURI)
 
 		if !existInCache {
+			// Extract the hash from the request URL, see if it matches the already stored entries
 			hashArr := strings.Split(r.RequestURI, "/")
 			if len(hashArr) > 3 {
 				hash := hashArr[len(hashArr)-1]
+				// Hash extrached, check the CacheMap
 				entry, existInCache = GetByHash(hash)
-				if !existInCache {
-					storedUrl, ok := HashUrlMap[hash]
+				// If the entry is still not found, it could be that it was fetched before but expired. Or it could just
+				// expire before but still be stored. Use its hash to check if we saved the url for this hash
+				if !existInCache || isExpired(entry) {
+					CacheMutex.Lock()
+					storedUrlMap, ok := HashUrlMap[hash]
+					CacheMutex.Unlock()
 					if ok {
-						url = storedUrl
+						storedUrl = storedUrlMap
 						foundTrueUrl = true
 					}
+					// If the entry was found on cache but expired, we need to refetch it later
+					existInCache = false
 				}
 			}
 		}
 
+		// For elephant, the entry could be just stored on disk
 		if !existInCache && options.EvictPolicy == "ELEPHANT" {
 			entry, existInCache = GetFromDiskUrl(r.RequestURI)
 		}
@@ -109,7 +123,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		if !existInCache {
 
 			if foundTrueUrl {
-				r.RequestURI = url.String()
+				r.RequestURI = storedUrl.String()
 			}
 
 			// call request to get data for caching
@@ -294,13 +308,8 @@ func GetByHash(hashkey string) (CacheEntry, bool) {
 
 	entry, exist := MemoryCache[hashkey]
 	if exist {
-		if isExpired(hashkey) {
-			DeleteCacheEntry(hashkey)
-			exist = false
-		} else {
-			entry.LastAccess = time.Now()
-			entry.UseFreq++
-		}
+		entry.LastAccess = time.Now()
+		entry.UseFreq++
 	}
 	CacheMutex.Unlock()
 
@@ -404,8 +413,6 @@ func WriteToDisk(fileHash string, entry *CacheEntry) {
 	writer.Flush()
 	writer.Reset(writer)
 	os.Truncate(filePath, int64(n))
-	currentSize, err := DirectorySize(CacheFolderPath)
-	ExceedMaxCache(currentSize)
 }
 
 func RestoreCache() {
@@ -421,12 +428,6 @@ func RestoreCache() {
 			continue
 		}
 		MemoryCache[fileName] = ReadFromDisk(fileName)
-	}
-
-	for key := range MemoryCache {
-		if isExpired(key) {
-			DeleteCacheEntry(key)
-		}
 	}
 
 	Evict()
@@ -468,8 +469,6 @@ func DeleteEntryElephant(hashkey string) {
 }
 
 func Evict() {
-	EvictExpired()
-
 	folderSize, err := DirectorySize(CacheFolderPath)
 	CheckError("err on reading directory size", err)
 	for ExceedMaxCache(folderSize) {
@@ -493,8 +492,6 @@ func Evict() {
 }
 
 func EvictForFile(size int64) {
-	EvictExpired()
-
 	folderSize, err := DirectorySize(CacheFolderPath)
 	CheckError("err on reading directory size", err)
 	for ExceedMaxCache(folderSize + size) {
@@ -541,17 +538,11 @@ func EvictLFU() string {
 	return bestKey
 }
 
-func EvictExpired() {
-	for key := range MemoryCache {
-		if isExpired(key) {
-			DeleteCacheEntry(key)
-		}
-	}
-}
+func isExpired(entry CacheEntry) bool {
+	CacheMutex.Lock()
+	defer CacheMutex.Unlock()
 
-func isExpired(hash string) bool {
-	cache, _ := MemoryCache[hash]
-	elapsed := time.Since(cache.CreateTime)
+	elapsed := time.Since(entry.CreateTime)
 	if elapsed > options.ExpirationTime {
 		return true
 	} else {
@@ -580,7 +571,6 @@ func FolderHasExceedCache(fileSize int64) bool {
 
 func ExceedMaxCache(size int64) bool {
 	MBToBytes := 1048576
-	//MBToBytes := 300000
 
 	r := size > options.CacheSize*int64(MBToBytes)
 	return r
