@@ -107,7 +107,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				// Hash extrached, check the CacheMap
 				entry, existInCache = GetByHash(hash)
 				if existInCache && !isExpired(entry) {
-					fmt.Println("Found the entry by its hash inside the our cache", hash, len(entry.RawData))
+					fmt.Println("Found the entry by its hash inside our cache", hash, len(entry.RawData))
 				}
 				// If the entry is still not found, it could be that it was fetched before but expired. Or it could just
 				// expire before but still be stored. Use its hash to check if we saved the url for this hash
@@ -175,6 +175,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if strings.Contains(http.DetectContentType(data), "text/html") {
+				fmt.Println(string(data))
 				urlsToReplace := ParseHTML(data)          // grab resources
 				newHTML := WriteHTML(data, urlsToReplace) // modify html
 				newEntry.RawData = []byte(newHTML)
@@ -254,12 +255,11 @@ func ParseHTML(resp []byte) []string {
 
 	for {
 		token := cursor.Next()
-		switch token {
-		case html.ErrorToken:
+		if token == html.ErrorToken {
 			return urlsToReplace
-		case html.StartTagToken:
-			//fmt.Println("NOT ERROR")
+		} else if token == html.StartTagToken || token == html.SelfClosingTagToken || token == html.EndTagToken {
 			fetchedToken := cursor.Token()
+			//fmt.Println("Got start token, name ", fetchedToken.Data, fetchedToken.Type, fetchedToken.Attr)
 			//fmt.Println(fetchedToken.Data, fetchedToken.Attr)
 			switch fetchedToken.Data {
 			case LINK_TAG:
