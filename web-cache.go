@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -87,7 +88,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	var storedUrl *url.URL
 	var foundTrueUrl bool
-	fmt.Println("Got request ", r.RequestURI, " ", r.URL)
+	fmt.Println("HANDLER_FOR_FIREFOX: Got request ", r.RequestURI, " ", r.URL)
 	// If not get, just forward the response to firefox
 
 	if r.Method == "GET" {
@@ -97,33 +98,41 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		// Check if entry with given request URL is already cached
 		entry, existInCache := GetByURL(r.RequestURI)
 
-
 		if !existInCache {
 			// Extract the hash from the request URL, see if it matches the already stored entries
+
 			hashArr := strings.Split(r.RequestURI, "/")
-			if len(hashArr) > 3 {
-				hash := hashArr[len(hashArr)-1]
-				// Hash extracted, check the CacheMap
-				entry, existInCache = GetByHash(hash)
-				if existInCache && !isExpired(entry) {
-					fmt.Println("Found the entry by its hash inside our cache", hash, len(entry.RawData))
+			var hash string
+			if len(hashArr) > 4 {
+				hash = hashArr[len(hashArr)-1]
+				fmt.Println("FIRST HASH", hash)
+			} else if len(hashArr) == 2 {
+
+				hash = hashArr[1]
+				fmt.Println("SECOND HASH", hash)
+			}
+			// Hash extracted, check the CacheMap
+			entry, existInCache = GetByHash(hash)
+			if existInCache && !isExpired(entry) {
+				fmt.Println("HANDLER_FOR_FIREFOX: Found the entry by its hash inside our cache", hash)
+			}
+			// If the entry is still not found, it could be that it was fetched before but expired. Or it could just
+			// expire before but still be stored. Use its hash to check if we saved the url for this hash
+			if !existInCache || isExpired(entry) {
+				CacheMutex.Lock()
+				storedUrlMap, ok := HashUrlMap[hash]
+				fmt.Println("HANDLER_FOR_FIREFOX: Stored urlmap")
+				CacheMutex.Unlock()
+				if ok {
+					storedUrl = storedUrlMap
+					foundTrueUrl = true
 				}
-				// If the entry is still not found, it could be that it was fetched before but expired. Or it could just
-				// expire before but still be stored. Use its hash to check if we saved the url for this hash
-				if !existInCache || isExpired(entry) {
-					CacheMutex.Lock()
-					storedUrlMap, ok := HashUrlMap[hash]
-					fmt.Println("Stored urlmap")
-					CacheMutex.Unlock()
-					if ok {
-						storedUrl = storedUrlMap
-						foundTrueUrl = true
-					}
-					// If the entry was found on cache but expired, we need to refetch it later
-					existInCache = false
-				}
+				// If the entry was found on cache but expired, we need to refetch it later
+				existInCache = false
 			}
 		}
+
+
 
 		// For elephant, the entry could be just stored on disk
 		if !existInCache && options.EvictPolicy == "ELEPHANT" {
@@ -138,19 +147,21 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 
 			// call request to get data for caching
 			resp := NewRequest(w, r)
-			fmt.Println("Fetching ", r.URL, " ", r.RequestURI)
+			fmt.Println("HANDLER_FOR_FIREFOX: Fetching ", r.URL, " ", r.RequestURI)
 
 			if resp == nil {
+				fmt.Println("HANDLER_FOR_FIREFOX: Response is nil")
 				return
 			}
 
 			if resp.StatusCode != 200 {
 				ForwardResponseToFireFox(w, resp)
+				fmt.Println("HANDLER_FOR_FIREFOX: Response is not 200")
 				return
 			}
 			data, err := ioutil.ReadAll(resp.Body)
 			if err != nil {
-				fmt.Println("Something wrong while reading body")
+				fmt.Println("HANDLER_FOR_FIREFOX: Something wrong while reading body")
 			}
 			newEntry := NewCacheEntry(data)
 			newEntry.RawData = data
@@ -161,12 +172,13 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 					newEntry.Header.Add(name, v)
 				}
 			}
-
 			if strings.Contains(http.DetectContentType(data), "text/html") {
 				urlsToReplace := ParseHTML(data)          // grab resources
 				newHTML := WriteHTML(data, urlsToReplace) // modify html
 				newEntry.RawData = []byte(newHTML)
 			}
+			newEntry.Header.Set("Content-Length", strconv.Itoa(len(newEntry.RawData)))
+			fmt.Println("Setting content length: ", strconv.Itoa(len(newEntry.RawData)))
 
 			if !foundTrueUrl {
 				CacheMutex.Lock()
@@ -224,7 +236,8 @@ func WriteHTML(data []byte, urlsToReplace []string) string {
 	htmlString := string(data)
 	htmlString = html.UnescapeString(htmlString)
 	for _, url := range urlsToReplace {
-		htmlString = strings.Replace(htmlString, url, Encrypt(url), -1)
+		fmt.Println("Replacing ", url, "with ", "http://localhost:1243/" + Encrypt(url))
+		htmlString = strings.Replace(htmlString, url, "http://localhost:1243/" + Encrypt(url), -1)
 	}
 	return htmlString
 }
@@ -302,7 +315,9 @@ func GetFromDiskHash(hashkey string) (CacheEntry, bool) {
 		// If the file was found
 		if fileName == hashkey {
 			// Delete from memory if the cache is too big
-			MemoryCache[fileName] = ReadFromDisk(fileName)
+			entry, err := ReadFromDisk(fileName)
+			CheckError("Error with elephant, ", err)
+			MemoryCache[fileName] = entry
 			Evict()
 			return MemoryCache[fileName], true
 		}
@@ -378,9 +393,9 @@ func RequestResource(a html.Attribute) {
 			entry.Header.Add(name, v)
 		}
 	}
-
+	entry.Header.Set("Content-Length", strconv.Itoa(len(entryBytes)))
+	fmt.Println("Setting content length: ", strconv.Itoa(len(entryBytes)))
 	AddCacheEntry(a.Val, entry)
-
 }
 
 // Fill in RawData
@@ -398,9 +413,13 @@ func AddCacheEntry(URL string, entry CacheEntry) {
 	CacheMutex.Lock()
 	Evict()
 	fileName := Encrypt(URL)
+	fmt.Println("ADD_CACHE_ENTRY: Attempting to add entry ", fileName, " with URL ", URL)
 	writeOk := WriteToDisk(fileName, &entry)
 	if writeOk {
 		MemoryCache[fileName] = entry
+		fmt.Println("ADD_CACHE_ENTRY: Successfully added entry ", fileName, " with URL ", URL)
+	} else {
+		fmt.Println("ADD_CACHE_ENTRY: Could not add entry ", fileName, " with URL ", URL)
 	}
 	CacheMutex.Unlock()
 }
@@ -408,7 +427,10 @@ func AddCacheEntry(URL string, entry CacheEntry) {
 func WriteToDisk(fileHash string, entry *CacheEntry) (bool) {
 	bytes, err := json.Marshal(entry)
 
+	fmt.Println("WRITE_TO_DISK: Attempting to write ", fileHash, " to disk. ", len(bytes), " bytes.")
+
 	if ExceedMaxCache(int64(len(bytes))) {
+		fmt.Println("WRITE_TO_DISK: Cannot add ", fileHash, " to disk. ", len(bytes), " bytes. Too big to fit in cache.")
 		return false
 	}
 
@@ -434,25 +456,30 @@ func WriteToDisk(fileHash string, entry *CacheEntry) (bool) {
 	writer.Flush()
 	writer.Reset(writer)
 	os.Truncate(filePath, int64(n))
-
+	fmt.Println("WRITE_TO_DISK: wrote to disk ", fileHash, " ", len(bytes), " bytes.")
 	return true
 }
 
 func RestoreCache() {
+
 	CacheMutex.Lock()
 	defer CacheMutex.Unlock()
 
 	files, err := filepath.Glob(CacheFolderPath + "*")
-	CheckError("err restoring cache. Cannot fetch file names", err)
+	CheckError("RESTORE_CACHE: err restoring cache. Cannot fetch file names", err)
 
 	for _, fileName := range files {
 		fileName = strings.TrimPrefix(fileName, "cache/")
 		if fileName == ".DS_Store" {
 			continue
 		}
-		MemoryCache[fileName] = ReadFromDisk(fileName)
+		entry, err := ReadFromDisk(fileName)
+		if err == nil {
+			MemoryCache[fileName] = entry
+			fmt.Println("RESTORE_CACHE: Successfully read ", fileName, " from disk.")
+		}
 	}
-
+	// In case cache size changed
 	Evict()
 }
 
@@ -463,23 +490,23 @@ func Encrypt(input string) string {
 	return sha
 }
 
-func ReadFromDisk(hash string) CacheEntry {
+func ReadFromDisk(hash string) (CacheEntry, error) {
 	data, err := ioutil.ReadFile(CacheFolderPath + hash)
-	CheckError("read error from disk", err)
+	CheckError("READ_FROM_DISK: read error from disk", err)
 
 	var cacheEntry CacheEntry
 	err = json.Unmarshal(data, &cacheEntry)
-	CheckError("json unmarshal err", err)
-	return cacheEntry
+	CheckError("READ_FROM_DISK: json unmarshal err", err)
+	return cacheEntry, err
 }
 
 func DeleteFromDisk(fileHash string) {
 	if fileHash == "" {
-		fmt.Println("cannot remove file of empty string from cache folder")
+		fmt.Println("DELETE_FROM_DISK: cannot remove file of empty string from cache folder")
 		return
 	}
 	err := os.Remove(CacheFolderPath + fileHash)
-	CheckError("remove "+fileHash+" error", err)
+	CheckError("DELETE_FROM_DISK: remove "+fileHash+" error", err)
 }
 
 func DeleteCacheEntry(hashkey string) {
@@ -588,13 +615,13 @@ func DirectorySize(path string) (int64, error) {
 // check if folder will exceed set cache size after adding the new file
 func FolderHasExceedCache(fileSize int64) bool {
 	currentSize, err := DirectorySize(CacheFolderPath)
-	CheckError("Issue with fetching cache folder size", err)
+	CheckError("FOLDER_HAS_EXCEEDED_CACHE: Issue with fetching cache folder size", err)
 	return ExceedMaxCache(currentSize + fileSize)
 }
 
 func ExceedMaxCache(size int64) bool {
 	//MBToBytes := 1048576
-	MBToBytes := 720
+	MBToBytes := 1550
 	r := size > options.CacheSize*int64(MBToBytes)
 	return r
 }
@@ -639,7 +666,7 @@ func NewRequest(w http.ResponseWriter, r *http.Request) *http.Response {
 	newRequest, err := http.NewRequest(r.Method, r.RequestURI, r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		fmt.Println("cannot fetch response in new request")
+		fmt.Println("NEW_REQUEST: cannot fetch response in new request")
 		return nil
 	}
 
@@ -647,7 +674,7 @@ func NewRequest(w http.ResponseWriter, r *http.Request) *http.Response {
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		fmt.Println("cannot fetch response in new request")
+		fmt.Println("NEW_REQUEST: cannot fetch response in new request")
 		return nil
 	}
 
