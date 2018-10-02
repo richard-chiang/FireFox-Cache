@@ -52,8 +52,8 @@ const CacheFolderPath string = "./cache/"
 func main() {
 	options = UserOptions{
 		EvictPolicy:    "LFU",
-		CacheSize:      1,
-		ExpirationTime: time.Duration(500) * time.Second}
+		CacheSize:      100,
+		ExpirationTime: time.Duration(5) * time.Second}
 
 	// IpPort := os.Args[1] // send and receive data from Firefox
 	// ReplacementPolicy := os.Args[2] // LFU or LRU or ELEPHANT
@@ -82,7 +82,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	var storedUrl *url.URL
 	var foundTrueUrl bool
-
+	fmt.Println("Got request ", r.RequestURI, " ", r.URL)
 	// If not get, just forward the response to firefox
 	if r.Method == "GET" {
 
@@ -92,12 +92,13 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		// Check if entry with given request URL is already cached
 		entry, existInCache := GetByURL(r.RequestURI)
 
+
 		if !existInCache {
 			// Extract the hash from the request URL, see if it matches the already stored entries
 			hashArr := strings.Split(r.RequestURI, "/")
 			if len(hashArr) > 3 {
 				hash := hashArr[len(hashArr)-1]
-				// Hash extrached, check the CacheMap
+				// Hash extracted, check the CacheMap
 				entry, existInCache = GetByHash(hash)
 				if existInCache && !isExpired(entry) {
 					fmt.Println("Found the entry by its hash inside our cache", hash, len(entry.RawData))
@@ -107,6 +108,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				if !existInCache || isExpired(entry) {
 					CacheMutex.Lock()
 					storedUrlMap, ok := HashUrlMap[hash]
+					fmt.Println("Stored urlmap")
 					CacheMutex.Unlock()
 					if ok {
 						storedUrl = storedUrlMap
@@ -123,7 +125,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			entry, existInCache = GetFromDiskUrl(r.RequestURI)
 		}
 
-		if !existInCache {
+		if !existInCache || isExpired(entry) {
 
 			if foundTrueUrl {
 				r.RequestURI = storedUrl.String()
@@ -131,6 +133,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 
 			// call request to get data for caching
 			resp := NewRequest(w, r)
+			fmt.Println("Fetching ", r.URL, " ", r.RequestURI)
 
 			if resp == nil {
 				return
@@ -140,7 +143,6 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				ForwardResponseToFireFox(w, resp)
 				return
 			}
-
 			data, err := ioutil.ReadAll(resp.Body)
 			if err != nil {
 				fmt.Println("Something wrong while reading body")
@@ -156,7 +158,6 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if strings.Contains(http.DetectContentType(data), "text/html") {
-				fmt.Println(string(data))
 				urlsToReplace := ParseHTML(data)          // grab resources
 				newHTML := WriteHTML(data, urlsToReplace) // modify html
 				newEntry.RawData = []byte(newHTML)
@@ -239,12 +240,10 @@ func ParseHTML(resp []byte) []string {
 			//fmt.Println(fetchedToken.Data, fetchedToken.Attr)
 			switch fetchedToken.Data {
 			case LINK_TAG:
-				fmt.Println(fetchedToken.String)
 				for _, a := range fetchedToken.Attr {
 					if a.Key == "href" && ValidParseUrl(a.Val) {
 						urlsToReplace = append(urlsToReplace, a.Val)
 						RequestResource(a)
-						fmt.Println(a.Val)
 					}
 				}
 			case IMG_TAG:
@@ -397,10 +396,14 @@ func AddCacheEntry(URL string, entry CacheEntry) {
 
 func WriteToDisk(fileHash string, entry *CacheEntry) (bool) {
 	bytes, err := json.Marshal(entry)
+
+	if ExceedMaxCache(int64(len(bytes))) {
+		return false
+	}
+
 	CheckError("json marshal error", err)
 	filePath := CacheFolderPath + fileHash
 	var file *os.File
-
 	_, err = os.Stat(filePath)
 	if err != nil { // file does not exist, do create
 		file, err = os.Create(filePath)
@@ -411,11 +414,6 @@ func WriteToDisk(fileHash string, entry *CacheEntry) (bool) {
 	}
 	defer file.Close()
 	CheckError("warning with write", err)
-
-	if ExceedMaxCache(int64(len(bytes))) {
-		return false
-	}
-
 	if FolderHasExceedCache(int64(len(bytes))) {
 		EvictForFile(int64(len(bytes)))
 	}
@@ -585,7 +583,7 @@ func FolderHasExceedCache(fileSize int64) bool {
 
 func ExceedMaxCache(size int64) bool {
 	MBToBytes := 1048576
-
+	//MBToBytes := 10000
 	r := size > options.CacheSize*int64(MBToBytes)
 	return r
 }
