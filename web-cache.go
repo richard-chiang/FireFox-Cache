@@ -45,6 +45,13 @@ type UserOptions struct {
 	CacheControl   bool
 }
 
+
+type HashUrlEntry struct {
+	hash string
+	url *url.URL
+}
+
+
 var options UserOptions
 var CacheMutex *sync.Mutex
 var MemoryCache map[string]CacheEntry
@@ -60,7 +67,7 @@ func main() {
 	// CacheControl := os.Args[5] // whether to use cache control or not
 
 	options = UserOptions{
-		EvictPolicy:    "LFU",
+		EvictPolicy:    "LRU",
 		CacheSize:      1,
 		ExpirationTime: time.Duration(100) * time.Second,
 		CacheControl:   false,
@@ -128,6 +135,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 					storedUrl = storedUrlMap
 					foundTrueUrl = true
 				}
+
 				// If the entry was found on cache but expired, we need to refetch it later
 				existInCache = false
 			}
@@ -181,9 +189,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			newEntry.Header.Set("Content-Length", strconv.Itoa(len(newEntry.RawData)))
 
 			if !foundTrueUrl {
-				CacheMutex.Lock()
-				HashUrlMap[Encrypt(r.RequestURI)] = r.URL
-				CacheMutex.Unlock()
+				AddUrlHash(Encrypt(r.RequestURI), r.URL)
 			}
 
 			if existInCache && isExpired(entry) {
@@ -373,9 +379,7 @@ func RequestResource(a html.Attribute) {
 
 	}
 	CheckError("request resource: stroring hash for new url", err)
-	CacheMutex.Lock()
-	HashUrlMap[Encrypt(a.Val)] = newUrl
-	CacheMutex.Unlock()
+	AddUrlHash(Encrypt(a.Val), newUrl)
 
 	CheckError("request resource: get request", err)
 	entryBytes, err := ioutil.ReadAll(resp.Body)
@@ -421,6 +425,13 @@ func AddCacheEntry(URL string, entry CacheEntry) {
 	CacheMutex.Unlock()
 }
 
+func AddUrlHash(hash string, newUrl *url.URL) {
+	CacheMutex.Lock()
+	defer CacheMutex.Unlock()
+	HashUrlMap[hash] = newUrl
+	WriteUrlHashToDisk()
+}
+
 func WriteToDisk(fileHash string, entry *CacheEntry) (bool) {
 	bytes, err := json.Marshal(entry)
 
@@ -453,9 +464,45 @@ func WriteToDisk(fileHash string, entry *CacheEntry) (bool) {
 	writer.Flush()
 	writer.Reset(writer)
 	os.Truncate(filePath, int64(n))
+	file.Sync()
+
 	fmt.Println("WRITE_TO_DISK: wrote to disk ", fileHash, " ", len(bytes), " bytes.")
 	return true
 }
+
+func WriteUrlHashToDisk()  (err error) {
+
+	tempMap := "./tempHashMap"
+	hashmap := "./hashUrlMap"
+
+	var tempFile *os.File
+
+	bytes, err := json.Marshal(HashUrlMap)
+
+	_, err = os.Stat(tempMap)
+	if err != nil { // file does not exist, do create
+		tempFile, err = os.Create(tempMap)
+		CheckError("Create File Error", err)
+	} else { // file exist, do write
+		tempFile, err = os.OpenFile(tempMap, os.O_WRONLY, 0666)
+		CheckError("open existing file error", err)
+	}
+	writer := bufio.NewWriter(tempFile)
+	_, err = writer.Write(bytes)
+	writer.Flush()
+
+	writer.Reset(writer)
+	tempFile.Close()
+	tempFile.Sync()
+
+	CheckError("open existing file error", err)
+	os.Rename(tempMap, hashmap)
+	directory, err := os.OpenFile("./", os.O_WRONLY, 0666)
+	directory.Sync()
+
+	return err
+}
+
 
 func RestoreCache() {
 
@@ -475,6 +522,18 @@ func RestoreCache() {
 			MemoryCache[fileName] = entry
 			fmt.Println("RESTORE_CACHE: Successfully read ", fileName, " from disk.")
 		}
+	}
+
+	hashmap := "./hashUrlMap"
+	_, err = os.Stat(hashmap)
+
+	if err == nil {
+		data, err := ioutil.ReadFile(hashmap)
+		CheckError("READ_FROM_DISK: URL MAP read error from disk", err)
+
+		err = json.Unmarshal(data, &HashUrlMap)
+		CheckError("RESTORE_CACHE: URL MAP json unmarshal err", err)
+		fmt.Println("RESTORE_CACHE: Restored URL map successfully!", HashUrlMap)
 	}
 	// In case cache size changed
 	Evict()

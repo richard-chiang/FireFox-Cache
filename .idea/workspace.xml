@@ -2,6 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="6b495c7f-9aa4-4559-94ce-2894e08a9a3f" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/web-cache.go" beforeDir="false" afterPath="$PROJECT_DIR$/web-cache.go" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -38,13 +39,13 @@
       <usages-collector id="statistics.file.extensions.edit">
         <counts>
           <entry key="gitignore" value="1" />
-          <entry key="go" value="8717" />
+          <entry key="go" value="9282" />
           <entry key="txt" value="22" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.types.edit">
         <counts>
-          <entry key="Go" value="8717" />
+          <entry key="Go" value="9282" />
           <entry key="PLAIN_TEXT" value="23" />
         </counts>
       </usages-collector>
@@ -60,8 +61,8 @@
       <file pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/web-cache.go">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="677">
-              <caret line="562" column="56" selection-start-line="562" selection-start-column="56" selection-end-line="562" selection-end-column="56" />
+            <state relative-caret-position="486">
+              <caret line="531" column="44" selection-start-line="531" selection-start-column="44" selection-end-line="531" selection-end-column="44" />
             </state>
           </provider>
         </entry>
@@ -70,7 +71,6 @@
   </component>
   <component name="FindInProjectRecents">
     <findStrings>
-      <find>WriteHeader</find>
       <find>ForwardResponseToFireFox</find>
       <find>fmt.print</find>
       <find>Write</find>
@@ -84,7 +84,6 @@
       <find>fetching</find>
       <find>header</find>
       <find>RequestRe</find>
-      <find>HashUrlMap</find>
       <find>EvictExpired</find>
       <find>getByHash</find>
       <find>DeleteCacheEntry</find>
@@ -100,6 +99,8 @@
       <find>setting co</find>
       <find>Evict</find>
       <find>evict()</find>
+      <find>HashUrlMap</find>
+      <find>AddUrlHash</find>
     </findStrings>
   </component>
   <component name="GOROOT" path="/usr/local/go" />
@@ -254,8 +255,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/web-cache.go">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="677">
-          <caret line="562" column="56" selection-start-line="562" selection-start-column="56" selection-end-line="562" selection-end-column="56" />
+        <state relative-caret-position="486">
+          <caret line="531" column="44" selection-start-line="531" selection-start-column="44" selection-end-line="531" selection-end-column="44" />
         </state>
       </provider>
     </entry>
