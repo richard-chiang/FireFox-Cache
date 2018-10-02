@@ -388,12 +388,14 @@ func AddCacheEntry(URL string, entry CacheEntry) {
 	CacheMutex.Lock()
 	Evict()
 	fileName := Encrypt(URL)
-	WriteToDisk(fileName, &entry)
-	MemoryCache[fileName] = entry
+	writeOk := WriteToDisk(fileName, &entry)
+	if writeOk {
+		MemoryCache[fileName] = entry
+	}
 	CacheMutex.Unlock()
 }
 
-func WriteToDisk(fileHash string, entry *CacheEntry) {
+func WriteToDisk(fileHash string, entry *CacheEntry) (bool) {
 	bytes, err := json.Marshal(entry)
 	CheckError("json marshal error", err)
 	filePath := CacheFolderPath + fileHash
@@ -409,6 +411,11 @@ func WriteToDisk(fileHash string, entry *CacheEntry) {
 	}
 	defer file.Close()
 	CheckError("warning with write", err)
+
+	if ExceedMaxCache(int64(len(bytes))) {
+		return false
+	}
+
 	if FolderHasExceedCache(int64(len(bytes))) {
 		EvictForFile(int64(len(bytes)))
 	}
@@ -418,6 +425,8 @@ func WriteToDisk(fileHash string, entry *CacheEntry) {
 	writer.Flush()
 	writer.Reset(writer)
 	os.Truncate(filePath, int64(n))
+
+	return true
 }
 
 func RestoreCache() {
