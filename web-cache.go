@@ -103,7 +103,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 
 			hashArr := strings.Split(r.RequestURI, "/")
 			var hash string
-			if len(hashArr) > 4 {
+			if len(hashArr) > 3 {
 				hash = hashArr[len(hashArr)-1]
 				fmt.Println("FIRST HASH", hash)
 			} else if len(hashArr) == 2 {
@@ -411,7 +411,6 @@ func NewCacheEntry(data []byte) CacheEntry {
 // Atomic adding to the cache
 func AddCacheEntry(URL string, entry CacheEntry) {
 	CacheMutex.Lock()
-	Evict()
 	fileName := Encrypt(URL)
 	fmt.Println("ADD_CACHE_ENTRY: Attempting to add entry ", fileName, " with URL ", URL)
 	writeOk := WriteToDisk(fileName, &entry)
