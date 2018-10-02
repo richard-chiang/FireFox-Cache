@@ -193,7 +193,7 @@ func ForwardResponseToFireFox(w http.ResponseWriter, resp *http.Response) {
 
 func WriteHTML(data []byte, urlsToReplace []string) string {
 	htmlString := string(data)
-
+	htmlString = html.UnescapeString(htmlString)
 	for _, url := range urlsToReplace {
 		htmlString = strings.Replace(htmlString, url, Encrypt(url), -1)
 	}
@@ -220,15 +220,17 @@ func ParseHTML(resp []byte) []string {
 			fetchedToken := cursor.Token()
 			switch fetchedToken.Data {
 			case LINK_TAG:
+				fmt.Println(fetchedToken.String)
 				for _, a := range fetchedToken.Attr {
-					if a.Key == "href" && (strings.HasPrefix(a.Val, "http") || strings.HasPrefix(a.Val, "//")) {
+					if a.Key == "href" && ValidParseUrl(a.Val) {
 						urlsToReplace = append(urlsToReplace, a.Val)
 						RequestResource(a)
+						fmt.Println(a.Val)
 					}
 				}
 			case IMG_TAG:
 				for _, a := range fetchedToken.Attr {
-					if a.Key == "src" && (strings.HasPrefix(a.Val, "http") || strings.HasPrefix(a.Val, "//")) {
+					if a.Key == "src" && ValidParseUrl(a.Val) {
 						urlsToReplace = append(urlsToReplace, a.Val)
 						RequestResource(a)
 					}
@@ -236,7 +238,7 @@ func ParseHTML(resp []byte) []string {
 			case SCRIPT_TAG:
 				for _, a := range fetchedToken.Attr {
 
-					if a.Key == "src" && (strings.HasPrefix(a.Val, "http") || strings.HasPrefix(a.Val, "//")) {
+					if a.Key == "src" && ValidParseUrl(a.Val) {
 						urlsToReplace = append(urlsToReplace, a.Val)
 						RequestResource(a)
 					}
@@ -244,6 +246,10 @@ func ParseHTML(resp []byte) []string {
 			}
 		}
 	}
+}
+
+func ValidParseUrl(val string) bool {
+	return strings.HasPrefix(val, "http") || strings.HasPrefix(val, "//")
 }
 
 // ===========================================================
