@@ -123,6 +123,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 
 		// For elephant, the entry could be just stored on disk
 		if !existInCache && options.EvictPolicy == "ELEPHANT" {
+			fmt.Println("HANDLER_FOR_FIREFOX: Using ELEPHANT: ", Encrypt(r.RequestURI), " not in memory, getting from disk")
 			entry, existInCache = GetFromDiskUrl(r.RequestURI)
 		}
 
@@ -524,6 +525,7 @@ func AddCacheEntry(URL string, entry CacheEntry) {
 
 func AddEntryElephant(hash string, entry CacheEntry) {
 	CacheMutex.Lock()
+	fmt.Println("ADD_ENTRY_ELEPHANT: Adding entry ", hash)
 	defer  CacheMutex.Unlock()
 	WriteToDisk(hash, entry)
 	AddToMemoryElephant(hash, entry)
