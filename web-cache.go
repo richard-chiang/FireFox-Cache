@@ -39,6 +39,7 @@ type CacheEntry struct {
 }
 
 type UserOptions struct {
+	PublicIpPort   string
 	EvictPolicy    string
 	CacheSize      int64
 	ExpirationTime time.Duration
@@ -53,13 +54,15 @@ var HashUrlMap map[string]*url.URL
 const CacheFolderPath string = "./cache/"
 
 func main() {
-	// IpPort := os.Args[1] // send and receive data from Firefox
-	// ReplacementPolicy := os.Args[2] // LFU or LRU or ELEPHANT
-	// CacheSize := os.Args[3]
-	// ExpirationTime := os.Args[4] // time period in seconds after which an item in the cache is considered to be expired
-	// CacheControl := os.Args[5] // whether to use cache control or not
+	PrivateIpPort := os.Args[1] // send and receive data from Firefox
+	PublicIpPort := os.Args[2] // send and receive data from Firefox
+	ReplacementPolicy := os.Args[3] // LFU or LRU or ELEPHANT
+	CacheSize := os.Args[4]
+	ExpirationTime := os.Args[5] // time period in seconds after which an item in the cache is considered to be expired
+	CacheControl := os.Args[6] // whether to use cache control or not
 
 	options = UserOptions{
+
 		EvictPolicy:    "LRU",
 		CacheSize:      100,
 		ExpirationTime: time.Duration(100) * time.Second,
@@ -67,10 +70,8 @@ func main() {
 	}
 
 
-	IpPort := "localhost:1243"
-
 	s := &http.Server{
-		Addr: IpPort,
+		Addr: PrivateIpPort,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			HandlerForFireFox(w, r)
 		}),
@@ -264,8 +265,7 @@ func WriteHTML(data []byte, urlsToReplace []string) string {
 	htmlString := string(data)
 	htmlString = html.UnescapeString(htmlString)
 	for _, url := range urlsToReplace {
-		fmt.Println("Replacing ", url, "with ", "http://localhost:1243/" + Encrypt(url))
-		htmlString = strings.Replace(htmlString, url, "http://localhost:1243/" + Encrypt(url), -1)
+		htmlString = strings.Replace(htmlString, url, options.PublicIpPort + "/" + Encrypt(url), -1)
 	}
 	return htmlString
 }
