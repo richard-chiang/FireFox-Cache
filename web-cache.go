@@ -285,7 +285,7 @@ func WriteHTML(data []byte, urlsToReplace []string) string {
 	htmlString := string(data)
 	htmlString = html.UnescapeString(htmlString)
 	for _, url := range urlsToReplace {
-		htmlString = strings.Replace(htmlString, url, options.PublicIpPort + "/" + Encrypt(url), -1)
+		htmlString = strings.Replace(htmlString, url, "http://" + options.PublicIpPort + "/" + Encrypt(url), -1)
 	}
 	return htmlString
 }
