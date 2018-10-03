@@ -349,7 +349,7 @@ func ValidParseUrl(val string) bool {
 func GetFromDiskHash(hashkey string) (CacheEntry, bool) {
 	CacheMutex.Lock()
 	defer CacheMutex.Unlock()
-
+	fmt.Println("GET_FROM_DISK_HASH: ELEPHANT - Getting entry ", hashkey, " from disk.")
 	files, err := filepath.Glob(CacheFolderPath + "*")
 	CheckError("err restoring cache. Cannot fetch file names", err)
 
@@ -376,6 +376,7 @@ func GetFromDiskHash(hashkey string) (CacheEntry, bool) {
 
 func AddToMemoryElephant(fileName string, entry CacheEntry) {
 
+	fmt.Println("ADD_TO_MEMORY_ELEPHANT: Adding file ", fileName, " to memory.")
 	bytesNewEntry, err := json.Marshal(entry)
 	if err != nil {
 		return
@@ -391,6 +392,7 @@ func AddToMemoryElephant(fileName string, entry CacheEntry) {
 
 	for ExceedMaxCache(sizeAllEntries + sizeNewElement) {
 		hashkey := EvictLRU()
+		fmt.Println("ADD_TO_MEMORY_ELEPHANT: Evicting ", hashkey, " from memory for ", fileName)
 		DeleteEntryElephant(hashkey)
 		bytesAllEntries, _ := json.Marshal(MemoryCache)
 		sizeAllEntries = int64(len(bytesAllEntries))
@@ -747,6 +749,7 @@ func EvictLRU() string {
 			oldestTime = cacheEntry.LastAccess
 		}
 	}
+	fmt.Println("EVICT_LRU: Evicting ", oldestKey)
 	return oldestKey
 }
 
@@ -761,6 +764,7 @@ func EvictLFU() string {
 			leastFrequentNumber = cacheEntry.UseFreq
 		}
 	}
+	fmt.Println("EVICT_LFU: Evicting ", bestKey)
 	return bestKey
 }
 
