@@ -105,8 +105,8 @@ func main() {
 
 	_, err = os.Stat("./cache")
 
-	if err =! nil {
-		os.Mkdir("cache")
+	if err != nil {
+		os.Mkdir("cache", 0755)
 	}
 
 	RestoreCache()
