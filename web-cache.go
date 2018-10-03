@@ -123,7 +123,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 
 		// For elephant, the entry could be just stored on disk
 		if !existInCache && options.EvictPolicy == "ELEPHANT" {
-			fmt.Println("HANDLER_FOR_FIREFOX: Using ELEPHANT: ", Encrypt(r.RequestURI), " not in memory, getting from disk")
+			fmt.Println("HANDLER_FOR_FIREFOX: Using ELEPHANT: ", Encrypt(r.RequestURI), " not in memory, getting from disk by whole URL")
 			entry, existInCache = GetFromDiskUrl(r.RequestURI)
 		}
 
@@ -142,6 +142,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 
 			// For elephant, the entry could be just stored on disk
 			if !existInCache && options.EvictPolicy == "ELEPHANT" {
+				fmt.Println("HANDLER_FOR_FIREFOX: Using ELEPHANT: ", hash, " not in memory, getting from disk by hash")
 				entry, existInCache = GetFromDiskHash(hash)
 			}
 
@@ -175,10 +176,12 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			resp := NewRequest(w, r)
 			avoidCopy := false
 			if options.CacheControl {
-				cacheControlString := resp.Header.Get("Cache-Control")
-				if strings.Contains(cacheControlString, "no-store") {
-					fmt.Println("HANDLER_FOR_FIREFOX: CACHE-CONTROL - enabled. Not saving entries for this request/response")
-					avoidCopy = true
+				cacheControlString, ok := resp.Header.Get("Cache-Control")
+				if ok {
+					if strings.Contains(cacheControlString, "no-store") {
+						fmt.Println("HANDLER_FOR_FIREFOX: CACHE-CONTROL - enabled. Not saving entries for this request/response")
+						avoidCopy = true
+					}
 				}
 			}
 
