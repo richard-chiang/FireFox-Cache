@@ -168,7 +168,9 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if !existInCache || isExpired(entry) {
+
 			if foundTrueUrl {
+				fmt.Println("Using stored URL: ", storedUrl.String(), " for ", r.RequestURI)
 				r.RequestURI = storedUrl.String()
 			}
 
@@ -196,7 +198,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 					avoidCopy = true
 				}
 			}
-		
+
 
 			data, err := ioutil.ReadAll(resp.Body)
 			if err != nil {
@@ -441,9 +443,6 @@ func RequestResource(a html.Attribute) {
 	var exist 	 bool
 
 	link := a.Val
-	if strings.HasPrefix(link, "//") {
-		link = "http:" + link
-	}
 	oldEntry, exist = GetByHash(Encrypt(link))
 
 	if !exist && options.EvictPolicy == "ELEPHANT" {
@@ -457,9 +456,14 @@ func RequestResource(a html.Attribute) {
 	}
 
 	fmt.Println("REQUEST_RESOURCE: Fetching ", link)
+	if strings.HasPrefix(link, "//") {
+		resp, err = http.Get("http:" + link)
+		newUrl, err = url.ParseRequestURI("http:" + link)
+	} else {
+		resp, err = http.Get(link)
+		newUrl, err = url.ParseRequestURI(link)
+	}
 
-	resp, err = http.Get(link)
-	newUrl, err = url.ParseRequestURI(link)
 
 	CheckError("request resource: stroring hash for new url", err)
 
