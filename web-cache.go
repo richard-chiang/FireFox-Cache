@@ -176,6 +176,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			if options.CacheControl {
 				cacheControlString := resp.Header.Get("Cache-Control")
 				if strings.Contains(cacheControlString, "no-store") {
+					fmt.Println("HANDLER_FOR_FIREFOX: CACHE-CONTROL - enabled. Not saving entries for this request/response")
 					avoidCopy = true
 				}
 			}
@@ -218,6 +219,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 						AddUrlHash(Encrypt(r.RequestURI), r.URL)
 					}
 				} else {
+					fmt.Println("HANDLER_FOR_FIREFOX: Storing Request url ", r.URL, " for ", "")
 					AddUrlHash(Encrypt(r.RequestURI), r.URL)
 				}
 			}
@@ -427,7 +429,7 @@ func RequestResource(a html.Attribute) {
 	var err error
 	var newUrl *url.URL
 	var avoidCopy bool
-
+	fmt.Println("HANDLER_FOR_FIREFOX: Fetching ", a.Val)
 	if strings.HasPrefix(a.Val, "//") {
 		resp, err = http.Get("http:" + a.Val)
 		if err != nil {
