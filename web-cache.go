@@ -718,10 +718,6 @@ func EvictForFile(size int64) {
 			KeyToEvict = EvictLRU()
 		} else if options.EvictPolicy == "LFU" {
 			KeyToEvict = EvictLFU()
-		} else {
-			KeyToEvict = EvictLRU()
-			DeleteEntryElephant(KeyToEvict)
-			return
 		}
 
 		if KeyToEvict == "" {
