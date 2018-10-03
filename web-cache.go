@@ -371,7 +371,7 @@ func GetFromDiskHash(hashkey string) (CacheEntry, bool) {
 			return entry, true
 		}
 	}
-	fmt.Println("GET_FROM_DISK_HASH: Using ELEPHANT: ", Encrypt(r.RequestURI), " was not found on the disk :========(  ")
+	fmt.Println("GET_FROM_DISK_HASH: Using ELEPHANT: ", hashkey, " was not found on the disk :========(  ")
 	return CacheEntry{}, false
 }
 
