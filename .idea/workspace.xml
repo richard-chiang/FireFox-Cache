@@ -2,7 +2,9 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="6b495c7f-9aa4-4559-94ce-2894e08a9a3f" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hashUrlMap" beforeDir="false" afterPath="$PROJECT_DIR$/hashUrlMap" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/web-cache.go" beforeDir="false" afterPath="$PROJECT_DIR$/web-cache.go" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -26,27 +28,27 @@
       </usages-collector>
       <usages-collector id="statistics.file.extensions.open">
         <counts>
-          <entry key="gitignore" value="1" />
+          <entry key="gitignore" value="2" />
           <entry key="go" value="6" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.types.open">
         <counts>
           <entry key="Go" value="6" />
-          <entry key="PLAIN_TEXT" value="1" />
+          <entry key="PLAIN_TEXT" value="2" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.extensions.edit">
         <counts>
-          <entry key="gitignore" value="1" />
-          <entry key="go" value="9282" />
+          <entry key="gitignore" value="12" />
+          <entry key="go" value="10387" />
           <entry key="txt" value="22" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.types.edit">
         <counts>
-          <entry key="Go" value="9282" />
-          <entry key="PLAIN_TEXT" value="23" />
+          <entry key="Go" value="10387" />
+          <entry key="PLAIN_TEXT" value="34" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.go.postfix.template.usages.trigger">
@@ -61,8 +63,17 @@
       <file pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/web-cache.go">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="486">
-              <caret line="531" column="44" selection-start-line="531" selection-start-column="44" selection-end-line="531" selection-end-column="44" />
+            <state relative-caret-position="137">
+              <caret line="206" column="37" lean-forward="true" selection-start-line="206" selection-start-column="37" selection-end-line="206" selection-end-column="37" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/.gitignore">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="36">
+              <caret line="2" column="10" selection-start-line="2" selection-start-column="10" selection-end-line="2" selection-end-column="10" />
             </state>
           </provider>
         </entry>
@@ -71,20 +82,6 @@
   </component>
   <component name="FindInProjectRecents">
     <findStrings>
-      <find>ForwardResponseToFireFox</find>
-      <find>fmt.print</find>
-      <find>Write</find>
-      <find>NewRequest</find>
-      <find>forwardRe</find>
-      <find>parseHTMLFromFile</find>
-      <find>DirectorySize</find>
-      <find>WriteToDisk</find>
-      <find>EvictForFile</find>
-      <find>EvictEx</find>
-      <find>fetching</find>
-      <find>header</find>
-      <find>RequestRe</find>
-      <find>EvictExpired</find>
       <find>getByHash</find>
       <find>DeleteCacheEntry</find>
       <find>expired</find>
@@ -92,15 +89,29 @@
       <find>10</find>
       <find>fmt.PRINT</find>
       <find>GetByHash</find>
-      <find>ReadFromDisk</find>
-      <find>AddCacheEntry</find>
       <find>fmt.Println</find>
       <find>WriteHTML</find>
       <find>setting co</find>
-      <find>Evict</find>
       <find>evict()</find>
-      <find>HashUrlMap</find>
       <find>AddUrlHash</find>
+      <find>HashUrlMap</find>
+      <find>getFromDis</find>
+      <find>ReadFromDisk</find>
+      <find>DeleteEntryElephant</find>
+      <find>EvictForFile</find>
+      <find>Evict</find>
+      <find>Evict()</find>
+      <find>GetFromDiskUrl</find>
+      <find>GetFromDiskHash</find>
+      <find>evictLRU</find>
+      <find>elephant</find>
+      <find>WriteUrlHashToDisk</find>
+      <find>TODO</find>
+      <find>AddToMemoryElephant</find>
+      <find>AddEntryElephant</find>
+      <find>CacheControl</find>
+      <find>AddCacheEntry</find>
+      <find>requestrESOU</find>
     </findStrings>
   </component>
   <component name="GOROOT" path="/usr/local/go" />
@@ -239,13 +250,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/.gitignore">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="18">
-          <caret line="1" column="6" selection-start-line="1" selection-start-column="6" selection-end-line="1" selection-end-column="6" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file:///usr/local/go/src/net/http/request.go">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="299">
@@ -253,10 +257,17 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/.gitignore">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="36">
+          <caret line="2" column="10" selection-start-line="2" selection-start-column="10" selection-end-line="2" selection-end-column="10" />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/web-cache.go">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="486">
-          <caret line="531" column="44" selection-start-line="531" selection-start-column="44" selection-end-line="531" selection-end-column="44" />
+        <state relative-caret-position="137">
+          <caret line="206" column="37" lean-forward="true" selection-start-line="206" selection-start-column="37" selection-end-line="206" selection-end-column="37" />
         </state>
       </provider>
     </entry>

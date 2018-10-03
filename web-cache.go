@@ -45,13 +45,6 @@ type UserOptions struct {
 	CacheControl   bool
 }
 
-
-type HashUrlEntry struct {
-	hash string
-	url *url.URL
-}
-
-
 var options UserOptions
 var CacheMutex *sync.Mutex
 var MemoryCache map[string]CacheEntry
@@ -68,7 +61,7 @@ func main() {
 
 	options = UserOptions{
 		EvictPolicy:    "LRU",
-		CacheSize:      1,
+		CacheSize:      100,
 		ExpirationTime: time.Duration(100) * time.Second,
 		CacheControl:   false,
 	}
@@ -96,6 +89,7 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	var storedUrl *url.URL
 	var foundTrueUrl bool
+
 	fmt.Println("HANDLER_FOR_FIREFOX: Got request ", r.RequestURI, " ", r.URL)
 	// If not get, just forward the response to firefox
 
@@ -106,21 +100,29 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 		// Check if entry with given request URL is already cached
 		entry, existInCache := GetByURL(r.RequestURI)
 
+		// For elephant, the entry could be just stored on disk
+		if !existInCache && options.EvictPolicy == "ELEPHANT" {
+			entry, existInCache = GetFromDiskUrl(r.RequestURI)
+		}
+
+		var hash string
 		if !existInCache {
 			// Extract the hash from the request URL, see if it matches the already stored entries
 
 			hashArr := strings.Split(r.RequestURI, "/")
-			var hash string
 			if len(hashArr) > 3 {
 				hash = hashArr[len(hashArr)-1]
-				fmt.Println("FIRST HASH", hash)
 			} else if len(hashArr) == 2 {
-
 				hash = hashArr[1]
-				fmt.Println("SECOND HASH", hash)
 			}
 			// Hash extracted, check the CacheMap
 			entry, existInCache = GetByHash(hash)
+
+			// For elephant, the entry could be just stored on disk
+			if !existInCache && options.EvictPolicy == "ELEPHANT" {
+				entry, existInCache = GetFromDiskHash(hash)
+			}
+
 			if existInCache && !isExpired(entry) {
 				fmt.Println("HANDLER_FOR_FIREFOX: Found the entry by its hash inside our cache", hash)
 			}
@@ -139,23 +141,24 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				// If the entry was found on cache but expired, we need to refetch it later
 				existInCache = false
 			}
-		}
 
-
-
-		// For elephant, the entry could be just stored on disk
-		if !existInCache && options.EvictPolicy == "ELEPHANT" {
-			entry, existInCache = GetFromDiskUrl(r.RequestURI)
 		}
 
 		if !existInCache || isExpired(entry) {
-
 			if foundTrueUrl {
 				r.RequestURI = storedUrl.String()
 			}
 
 			// call request to get data for caching
 			resp := NewRequest(w, r)
+			avoidCopy := false
+			if options.CacheControl {
+				cacheControlString := resp.Header.Get("Cache-Control")
+				if strings.Contains(cacheControlString, "no-store") {
+					avoidCopy = true
+				}
+			}
+
 			fmt.Println("HANDLER_FOR_FIREFOX: Fetching ", r.URL, " ", r.RequestURI)
 
 			if resp == nil {
@@ -189,15 +192,34 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			newEntry.Header.Set("Content-Length", strconv.Itoa(len(newEntry.RawData)))
 
 			if !foundTrueUrl {
-				AddUrlHash(Encrypt(r.RequestURI), r.URL)
+				if options.CacheControl {
+					if !avoidCopy {
+						AddUrlHash(Encrypt(r.RequestURI), r.URL)
+					}
+				} else {
+					AddUrlHash(Encrypt(r.RequestURI), r.URL)
+				}
 			}
-
 			if existInCache && isExpired(entry) {
 				newEntry.UseFreq = entry.UseFreq + 1
-				fmt.Println(newEntry.UseFreq)
 			}
 
-			AddCacheEntry(r.RequestURI, newEntry) // save original html
+			if options.CacheControl {
+				if !avoidCopy{
+					if options.EvictPolicy == "ELEPHANT" {
+						AddEntryElephant(Encrypt(r.RequestURI), newEntry)
+					} else {
+						AddCacheEntry(r.RequestURI, newEntry) // save original html
+					}
+				}
+			} else {
+				if options.EvictPolicy == "ELEPHANT" {
+					AddEntryElephant(Encrypt(r.RequestURI), newEntry)
+				} else {
+					AddCacheEntry(r.RequestURI, newEntry) // save original html
+				}
+
+			}
 			entry = newEntry
 			resp.Body.Close()
 		}
@@ -247,10 +269,6 @@ func WriteHTML(data []byte, urlsToReplace []string) string {
 	}
 	return htmlString
 }
-
-// example
-// tagData = "img"
-// keyword = "src"
 
 func ParseHTML(resp []byte) []string {
 	const LINK_TAG = "link"
@@ -322,13 +340,40 @@ func GetFromDiskHash(hashkey string) (CacheEntry, bool) {
 		if fileName == hashkey {
 			// Delete from memory if the cache is too big
 			entry, err := ReadFromDisk(fileName)
+			if err != nil {
+				return CacheEntry{}, false
+			}
 			CheckError("Error with elephant, ", err)
-			MemoryCache[fileName] = entry
-			return MemoryCache[fileName], true
+			AddToMemoryElephant(fileName, entry)
+			return entry, true
 		}
 	}
-
 	return CacheEntry{}, false
+}
+
+func AddToMemoryElephant(fileName string, entry CacheEntry) {
+
+	bytesNewEntry, err := json.Marshal(entry)
+	if err != nil {
+		return
+	}
+	bytesAllEntries, _ := json.Marshal(MemoryCache)
+
+	sizeNewElement := int64(len(bytesNewEntry))
+	sizeAllEntries := int64(len(bytesAllEntries))
+
+	if sizeNewElement > 1048576 * options.CacheSize {
+		return
+	}
+
+	for ExceedMaxCache(sizeAllEntries + sizeNewElement) {
+		hashkey := EvictLRU()
+		DeleteEntryElephant(hashkey)
+		bytesAllEntries, _ := json.Marshal(MemoryCache)
+		sizeAllEntries = int64(len(bytesAllEntries))
+	}
+
+	MemoryCache[fileName] = entry
 }
 
 func GetFromDiskUrl(url string) (CacheEntry, bool) {
@@ -361,6 +406,8 @@ func RequestResource(a html.Attribute) {
 	var resp *http.Response
 	var err error
 	var newUrl *url.URL
+	var avoidCopy bool
+
 	if strings.HasPrefix(a.Val, "//") {
 		resp, err = http.Get("http:" + a.Val)
 		if err != nil {
@@ -376,10 +423,23 @@ func RequestResource(a html.Attribute) {
 			resp, err = http.Get(a.Val)
 		}
 		newUrl, err = url.ParseRequestURI(a.Val)
-
 	}
 	CheckError("request resource: stroring hash for new url", err)
-	AddUrlHash(Encrypt(a.Val), newUrl)
+
+	if options.CacheControl {
+		cacheControlString := resp.Header.Get("Cache-Control")
+		if strings.Contains(cacheControlString, "no-store") {
+			avoidCopy = true
+		}
+	}
+
+	if options.CacheControl {
+		if !avoidCopy {
+			AddUrlHash(Encrypt(a.Val), newUrl)
+		}
+	} else {
+		AddUrlHash(Encrypt(a.Val), newUrl)
+	}
 
 	CheckError("request resource: get request", err)
 	entryBytes, err := ioutil.ReadAll(resp.Body)
@@ -397,7 +457,22 @@ func RequestResource(a html.Attribute) {
 		}
 	}
 	entry.Header.Set("Content-Length", strconv.Itoa(len(entryBytes)))
-	AddCacheEntry(a.Val, entry)
+
+	if options.CacheControl {
+		if !avoidCopy {
+			if options.EvictPolicy == "ELEPHANT" {
+				AddEntryElephant(Encrypt(a.Val), entry)
+			} else {
+				AddCacheEntry(a.Val, entry)
+			}
+		}
+	} else {
+		if options.EvictPolicy == "ELEPHANT" {
+			AddEntryElephant(Encrypt(a.Val), entry)
+		} else {
+			AddCacheEntry(a.Val, entry)
+		}
+	}
 }
 
 // Fill in RawData
@@ -415,7 +490,7 @@ func AddCacheEntry(URL string, entry CacheEntry) {
 	CacheMutex.Lock()
 	fileName := Encrypt(URL)
 	fmt.Println("ADD_CACHE_ENTRY: Attempting to add entry ", fileName, " with URL ", URL)
-	writeOk := WriteToDisk(fileName, &entry)
+	writeOk := WriteToDisk(fileName, entry)
 	if writeOk {
 		MemoryCache[fileName] = entry
 		fmt.Println("ADD_CACHE_ENTRY: Successfully added entry ", fileName, " with URL ", URL)
@@ -425,6 +500,13 @@ func AddCacheEntry(URL string, entry CacheEntry) {
 	CacheMutex.Unlock()
 }
 
+func AddEntryElephant(hash string, entry CacheEntry) {
+	CacheMutex.Lock()
+	defer  CacheMutex.Unlock()
+	WriteToDisk(hash, entry)
+	AddToMemoryElephant(hash, entry)
+}
+
 func AddUrlHash(hash string, newUrl *url.URL) {
 	CacheMutex.Lock()
 	defer CacheMutex.Unlock()
@@ -432,14 +514,16 @@ func AddUrlHash(hash string, newUrl *url.URL) {
 	WriteUrlHashToDisk()
 }
 
-func WriteToDisk(fileHash string, entry *CacheEntry) (bool) {
+func WriteToDisk(fileHash string, entry CacheEntry) (bool) {
 	bytes, err := json.Marshal(entry)
 
 	fmt.Println("WRITE_TO_DISK: Attempting to write ", fileHash, " to disk. ", len(bytes), " bytes.")
 
-	if ExceedMaxCache(int64(len(bytes))) {
-		fmt.Println("WRITE_TO_DISK: Cannot add ", fileHash, " to disk. ", len(bytes), " bytes. Too big to fit in cache.")
-		return false
+	if options.EvictPolicy != "ELEPHANT" {
+		if ExceedMaxCache(int64(len(bytes))) {
+			fmt.Println("WRITE_TO_DISK: Cannot add ", fileHash, " to disk. ", len(bytes), " bytes. Too big to fit in cache.")
+			return false
+		}
 	}
 
 	CheckError("json marshal error", err)
@@ -455,8 +539,11 @@ func WriteToDisk(fileHash string, entry *CacheEntry) (bool) {
 	}
 	defer file.Close()
 	CheckError("warning with write", err)
-	if FolderHasExceedCache(int64(len(bytes))) {
-		EvictForFile(int64(len(bytes)))
+
+	if options.EvictPolicy != "ELEPHANT" {
+		if FolderHasExceedCache(int64(len(bytes))) {
+			EvictForFile(int64(len(bytes)))
+		}
 	}
 	writer := bufio.NewWriter(file)
 	n, err := writer.Write(bytes)
@@ -536,7 +623,9 @@ func RestoreCache() {
 		fmt.Println("RESTORE_CACHE: Restored URL map successfully!", HashUrlMap)
 	}
 	// In case cache size changed
-	Evict()
+	if options.EvictPolicy != "ELEPHANT" {
+		Evict()
+	}
 }
 
 func Encrypt(input string) string {
@@ -548,6 +637,9 @@ func Encrypt(input string) string {
 
 func ReadFromDisk(hash string) (CacheEntry, error) {
 	data, err := ioutil.ReadFile(CacheFolderPath + hash)
+	if err != nil {
+		return CacheEntry{}, err
+	}
 	CheckError("READ_FROM_DISK: read error from disk", err)
 
 	var cacheEntry CacheEntry
@@ -584,10 +676,6 @@ func Evict() {
 			KeyToEvict = EvictLRU()
 		} else if options.EvictPolicy == "LFU" {
 			KeyToEvict = EvictLFU()
-		} else {
-			KeyToEvict = EvictLRU()
-			DeleteEntryElephant(KeyToEvict)
-			return
 		}
 
 		if KeyToEvict == "" {
@@ -681,8 +769,8 @@ func FolderHasExceedCache(fileSize int64) bool {
 }
 
 func ExceedMaxCache(size int64) bool {
-	//MBToBytes := 1048576
-	MBToBytes := 110000
+	MBToBytes := 1048576
+	//MBToBytes := 110000
 	fmt.Printf("EXCEED_MAX_CACHE: Folder with new file is now %d bytes. %d bytes available overall. \n", size, options.CacheSize*int64(MBToBytes))
 	r := size > options.CacheSize*int64(MBToBytes)
 	return r
