@@ -430,23 +430,30 @@ func RequestResource(a html.Attribute) {
 	var err error
 	var newUrl *url.URL
 	var avoidCopy bool
-	fmt.Println("HANDLER_FOR_FIREFOX: Fetching ", a.Val)
-	if strings.HasPrefix(a.Val, "//") {
-		resp, err = http.Get("http:" + a.Val)
-		if err != nil {
-			time.Sleep(time.Second)
-			resp, err = http.Get(a.Val)
-		}
-		newUrl, err = url.ParseRequestURI("http:" + a.Val)
+	var oldEntry CacheEntry
+	var exist 	 bool
 
-	} else {
-		resp, err = http.Get(a.Val)
-		if err != nil {
-			time.Sleep(time.Second)
-			resp, err = http.Get(a.Val)
-		}
-		newUrl, err = url.ParseRequestURI(a.Val)
+	link := a.Val
+	if strings.HasPrefix(link, "//") {
+		link = "http:" + link
 	}
+	oldEntry, exist = GetByHash(Encrypt(link))
+
+	if !exist && options.EvictPolicy == "ELEPHANT" {
+			fmt.Println("HANDLER_FOR_FIREFOX: Using ELEPHANT: ", Encrypt(link), " not in memory, getting from disk")
+			oldEntry, exist = GetFromDiskUrl(link)
+	}
+
+	if exist && !isExpired(oldEntry)  {
+		fmt.Println("REQUEST_RESOURCE: Entry is already saved and fresh, no need to overwrite")
+		return
+	}
+
+	fmt.Println("REQUEST_RESOURCE: Fetching ", link)
+
+	resp, err = http.Get(link)
+	newUrl, err = url.ParseRequestURI(link)
+
 	CheckError("request resource: stroring hash for new url", err)
 
 	if options.CacheControl {
@@ -458,10 +465,10 @@ func RequestResource(a html.Attribute) {
 
 	if options.CacheControl {
 		if !avoidCopy {
-			AddUrlHash(Encrypt(a.Val), newUrl)
+			AddUrlHash(Encrypt(link), newUrl)
 		}
 	} else {
-		AddUrlHash(Encrypt(a.Val), newUrl)
+		AddUrlHash(Encrypt(link), newUrl)
 	}
 
 	CheckError("request resource: get request", err)
@@ -484,16 +491,16 @@ func RequestResource(a html.Attribute) {
 	if options.CacheControl {
 		if !avoidCopy {
 			if options.EvictPolicy == "ELEPHANT" {
-				AddEntryElephant(Encrypt(a.Val), entry)
+				AddEntryElephant(Encrypt(link), entry)
 			} else {
-				AddCacheEntry(a.Val, entry)
+				AddCacheEntry(link, entry)
 			}
 		}
 	} else {
 		if options.EvictPolicy == "ELEPHANT" {
-			AddEntryElephant(Encrypt(a.Val), entry)
+			AddEntryElephant(Encrypt(link), entry)
 		} else {
-			AddCacheEntry(a.Val, entry)
+			AddCacheEntry(link, entry)
 		}
 	}
 }
