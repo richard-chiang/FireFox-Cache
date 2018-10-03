@@ -36,3 +36,6 @@ sudo apt-get install mercurial
 # go get github.com/arcaneiceman/GoVector
 
 source .profile
+source ~/.profile
+
+go get golang.org/x/net/html
