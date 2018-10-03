@@ -61,12 +61,32 @@ func main() {
 	ExpirationTime := os.Args[5] // time period in seconds after which an item in the cache is considered to be expired
 	CacheControl := os.Args[6] // whether to use cache control or not
 
-	options = UserOptions{
+	CacheSizeInt, err := strconv.Atoi(CacheSize)
+	if err != nil || CacheSizeInt < 1 {
+		fmt.Println("Please enter valid cache size ")
+		return
+	}
+	CacheSizeInt64 := int64(CacheSizeInt)
 
-		EvictPolicy:    "LRU",
-		CacheSize:      100,
-		ExpirationTime: time.Duration(100) * time.Second,
-		CacheControl:   false,
+	ExpirationTimeInt, err := strconv.Atoi(ExpirationTime)
+	if err != nil || ExpirationTimeInt < 1 {
+		fmt.Println("Please enter valid expiration time ")
+		return
+	}
+
+	CacheControlBool, err := strconv.ParseBool(CacheControl)
+	if err != nil {
+		fmt.Println("Please enter valid cache control ")
+		return
+	}
+
+
+	options = UserOptions{
+		PublicIpPort:		PublicIpPort,
+		EvictPolicy:    ReplacementPolicy,
+		CacheSize:      CacheSizeInt64,
+		ExpirationTime: time.Duration(ExpirationTimeInt) * time.Second,
+		CacheControl:   CacheControlBool,
 	}
 
 
