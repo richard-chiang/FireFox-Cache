@@ -102,6 +102,13 @@ func main() {
 	MemoryCache = map[string]CacheEntry{}
 	HashUrlMap = map[string]*url.URL{}
 	CacheMutex = &sync.Mutex{}
+
+	_, err = os.Stat("./cache")
+
+	if err =! nil {
+		os.Mkdir("cache")
+	}
+
 	RestoreCache()
 	log.Fatal(s.ListenAndServe())
 }
