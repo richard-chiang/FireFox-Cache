@@ -174,16 +174,6 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 
 			// call request to get data for caching
 			resp := NewRequest(w, r)
-			avoidCopy := false
-			if options.CacheControl {
-				cacheControlString := resp.Header.Get("Cache-Control")
-				if cacheControlString != nil {
-					if strings.Contains(cacheControlString, "no-store") {
-						fmt.Println("HANDLER_FOR_FIREFOX: CACHE-CONTROL - enabled. Not saving entries for this request/response")
-						avoidCopy = true
-					}
-				}
-			}
 
 			fmt.Println("HANDLER_FOR_FIREFOX: Fetching ", r.URL, " ", r.RequestURI)
 
@@ -197,6 +187,17 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 				fmt.Println("HANDLER_FOR_FIREFOX: Response is not 200")
 				return
 			}
+
+			avoidCopy := false
+			if options.CacheControl {
+				cacheControlString := resp.Header.Get("Cache-Control")
+				if strings.Contains(cacheControlString, "no-store") {
+					fmt.Println("HANDLER_FOR_FIREFOX: CACHE-CONTROL - enabled. Not saving entries for this request/response")
+					avoidCopy = true
+				}
+			}
+		
+
 			data, err := ioutil.ReadAll(resp.Body)
 			if err != nil {
 				fmt.Println("HANDLER_FOR_FIREFOX: Something wrong while reading body")
