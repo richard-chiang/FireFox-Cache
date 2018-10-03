@@ -176,8 +176,8 @@ func HandlerForFireFox(w http.ResponseWriter, r *http.Request) {
 			resp := NewRequest(w, r)
 			avoidCopy := false
 			if options.CacheControl {
-				cacheControlString, ok := resp.Header.Get("Cache-Control")
-				if ok {
+				cacheControlString := resp.Header.Get("Cache-Control")
+				if cacheControlString != nil {
 					if strings.Contains(cacheControlString, "no-store") {
 						fmt.Println("HANDLER_FOR_FIREFOX: CACHE-CONTROL - enabled. Not saving entries for this request/response")
 						avoidCopy = true
